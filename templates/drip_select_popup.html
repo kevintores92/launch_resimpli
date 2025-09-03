@@ -1,0 +1,59 @@
+<div class="drip-popup-overlay" onclick="closeDripPopup(event)"></div>
+<div class="drip-popup-modal drip-select-modal drip-popup-centered">
+  <h3>Select a Drip Automation</h3>
+  <table class="drip-popup-table">
+    <thead>
+      <tr><th>Name</th><th></th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for drip in automations|groupby('id') %}
+      <tr>
+        <td>{{ drip.list[0].name }}</td>
+        <td><button class="btn btn-secondary view-messages-btn" data-drip-id="{{ drip.list[0].id }}">view messages</button></td>
+        <td><button class="btn btn-primary select-drip-btn" data-drip-id="{{ drip.list[0].id }}">💧 select</button></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div style="text-align:right;margin-top:20px;">
+    <button class="btn btn-light close-drip-popup" onclick="closeDripPopup(event)">Cancel</button>
+  </div>
+</div>
+<style>
+/* Modal centered and responsive */
+.drip-popup-modal {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 24px #0003;
+  padding: 36px 40px 28px 40px;
+  z-index: 9999;
+  min-width: 420px;
+  max-width: 96vw;
+  width: 480px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.drip-popup-centered {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+.drip-select-modal {
+  min-width: 420px;
+  max-width: 96vw;
+  width: 480px;
+}
+.drip-popup-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+.drip-popup-table th, .drip-popup-table td { padding: 10px 8px; border: none; text-align: left; }
+.btn-light { background: #eee; color: #222; border: none; border-radius: 6px; padding: 8px 18px; cursor: pointer; }
+.btn-primary { background: #2196f3; color: white; border: none; border-radius: 6px; padding: 8px 18px; cursor: pointer; }
+.btn-secondary { background: #4CAF50; color: white; border: none; border-radius: 6px; padding: 8px 18px; cursor: pointer; }
+</style>
+<!-- JS handlers are now in script.js -->

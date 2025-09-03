@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+{% block content %}
+<div style="margin: 40px auto 0 auto; max-width: 1200px; min-width: 700px; background: #fff; border-radius: 14px; box-shadow: 0 2px 16px #0001; padding: 36px 48px;">
+  <div class="page-header">
+    <h2>➕ New Drip Automation</h2>
+    <a href="{{ url_for('drip_automations') }}" class="btn btn-secondary">← Back to List</a>
+  </div>
+  <form method="POST" id="dripForm">
+    <!-- Name -->
+    <input type="text" name="name" id="dripName" placeholder="Drip Automation Name" class="drip-input">
+
+    <!-- Messages Timeline -->
+    <div class="timeline" id="messagesContainer"></div>
+
+    <!-- Add more messages -->
+    <button type="button" class="add-btn" onclick="addMessage()">＋ Add Message</button>
+
+    <div id="nameError" class="error hidden">Drip Automation name cannot be blank</div>
+
+    <!-- Save -->
+    <div class="save-wrapper">
+      <button type="submit" class="btn-save">💾 Save Drip Automation</button>
+    </div>
+  </form>
+</div>
+
+<script>
+let messageCount = 0;
+const contactColumns = {{ contact_columns|tojson }};
+
+function addMessage(day=1, text="") {
+  messageCount++;
+  const container = document.getElementById("messagesContainer");
+  const div = document.createElement("div");
+  div.classList.add("drip-card", "drip-flex");
+  div.innerHTML = `
+    <div class="drip-main">
+      <h4>Message ${messageCount}</h4>
+      <label>Send on day 
+        <input type="number" name="days[]" value="${day}" min="1" class="day-input">
+      </label>
+      <span class="day-label">Day ${day}</span>
+      <textarea name="messages[]" class="drip-textarea" placeholder="Write your message" oninput="validateMessage(this)">${text}</textarea>
+      <div class="drip-toolbar">
+        <select class="merge-dropdown">
+          <option value="">Add Merge Field...</option>
+          ${contactColumns.map(col => `<option value="{${col}}">{${col}}</option>`).join("")}
+        </select>
+        <button type="button" onclick="insertMergeField(this)">➕ Add Merge Field</button>
+        <button type="button" onclick="insertTextSpinner(this)">🎲 Add Text Spinner</button>
+        <button type="button" onclick="this.closest('.drip-card').remove(); validateAllMessages();">🗑️ Remove</button>
+      </div>
+    </div>
+    <div class="validation-box drip-validation">
+      <ul>
+        <li class="rule-length">❌ Minimum of 8 characters</li>
+        <li class="rule-spinners">❌ At least 2 Text Spinners [0/2]</li>
+        <li class="rule-elements">❌ Each Text Spinner must have at least 2 elements</li>
+        <li class="rule-valid valid">✅ All Merge Fields and Text Spinners must be valid</li>
+        <li class="rule-keywords valid">✅ Must have no restricted or negative keywords</li>
+      </ul>
+    </div>
+  `;
+  container.appendChild(div);
+  // Validate immediately
+  validateMessage(div.querySelector('textarea'));
+}
+
+function insertMergeField(btn) {
+  const card = btn.closest('.drip-card');
+  const dropdown = card.querySelector('.merge-dropdown');
+  const textarea = card.querySelector('textarea');
+  const val = dropdown.value;
+  if (val) {
+    insertAtCursor(textarea, val);
+    dropdown.selectedIndex = 0;
+    validateMessage(textarea);
+  }
+}
+
+function insertTextSpinner(btn) {
+  const textarea = btn.closest('.drip-card').querySelector('textarea');
+  insertAtCursor(textarea, "{option1|option2}");
+  validateMessage(textarea);
+}
+
+function insertAtCursor(textarea, text) {
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const before = textarea.value.substring(0, start);
+  const after = textarea.value.substring(end);
+  textarea.value = before + text + after;
+  textarea.focus();
+  textarea.selectionStart = textarea.selectionEnd = start + text.length;
+}
+
+function validateMessage(textarea) {
+  const card = textarea.closest('.drip-card');
+  const value = textarea.value;
+  const spinners = (value.match(/{[^}]+}/g) || []).filter(s => s.includes("|"));
+
+  // Rule 1: Minimum length
+  let validLength = value.length >= 8;
+  card.querySelector('.rule-length').innerText = validLength ? "✅ Minimum of 8 characters" : "❌ Minimum of 8 characters";
+
+  // Rule 2: At least 2 text spinners
+  let validSpinnerCount = spinners.length >= 2;
+  card.querySelector('.rule-spinners').innerText = validSpinnerCount ? `✅ At least 2 Text Spinners [${spinners.length}/2]` : `❌ At least 2 Text Spinners [${spinners.length}/2]`;
+
+  // Rule 3: Each spinner has at least 2 elements
+  let validSpinnerElements = spinners.every(s => s.split("|").length >= 2);
+  card.querySelector('.rule-elements').innerText = validSpinnerElements ? "✅ Each Text Spinner has at least 2 elements" : "❌ Each Text Spinner must have at least 2 elements";
+
+  // Rule 4: All merge fields and spinners valid (basic check)
+  let validMerge = true;
+  card.querySelector('.rule-valid').classList.toggle("valid", validMerge);
+
+  // Rule 5: No restricted/negative keywords
+  let restricted = /stop|unsubscribe|wrong number/i.test(value);
+  let validKeywords = !restricted;
+  card.querySelector('.rule-keywords').classList.toggle("valid", validKeywords);
+
+  // Return overall validity for this message
+  return validLength && validSpinnerCount && validSpinnerElements && validMerge && validKeywords;
+}
+
+function validateAllMessages() {
+  let allValid = true;
+  document.querySelectorAll('.drip-card textarea').forEach(textarea => {
+    if (!validateMessage(textarea)) allValid = false;
+  });
+  return allValid;
+}
+
+document.getElementById("dripForm").addEventListener("submit", function(e) {
+  let name = document.getElementById("dripName").value.trim();
+  if (!name) {
+    e.preventDefault();
+    document.getElementById("nameError").classList.remove("hidden");
+    return;
+  }
+  if (!validateAllMessages()) {
+    e.preventDefault();
+    alert("Please fix all validation errors before saving. Each message must be valid.");
+    return;
+  }
+});
+
+document.addEventListener("DOMContentLoaded", () => {
+  addMessage();
+});
+</script>
+
+<style>
+.drip-input, .drip-textarea, .day-input {
+  width: 100%;
+  margin-bottom: 10px;
+  padding: 8px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+}
+.drip-card {
+  background: #f9f9f9;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.drip-flex {
+  display: flex;
+  align-items: flex-start;
+  gap: 32px;
+}
+.drip-main {
+  flex: 2 1 0;
+  min-width: 0;
+}
+.drip-validation {
+  flex: 1 1 220px;
+  min-width: 220px;
+  max-width: 320px;
+  margin-top: 16px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+  padding: 18px 20px 18px 20px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+  font-size: 1rem;
+  color: #222;
+}
+.drip-validation ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.drip-validation li {
+  margin-bottom: 8px;
+  font-size: 1rem;
+}
+.drip-validation .valid {
+  color: #1cae4e;
+  font-weight: 500;
+}
+.drip-toolbar {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+}
+.add-btn, .btn-save {
+  background: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 10px 18px;
+  margin-top: 10px;
+  cursor: pointer;
+}
+.validation-box {
+  background: #fffbe6;
+  border: 1px solid #ffe58f;
+  border-radius: 6px;
+  padding: 12px;
+  margin: 18px 0;
+}
+.validation-box ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.validation-box li {
+  margin-bottom: 6px;
+  font-size: 15px;
+}
+.validation-box .valid {
+  color: #52c41a;
+}
+.error {
+  color: #ff4d4f;
+  margin-top: 8px;
+}
+.hidden { display: none; }
+</style>
+{% endblock %}
