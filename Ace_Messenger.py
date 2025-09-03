@@ -5,24 +5,26 @@ from twilio.twiml.voice_response import VoiceResponse
 from pyngrok import ngrok
 from datetime import datetime, timezone, timedelta
 from dateutil import parser, tz
+
 from sms_sender_core import send_sms_batch
 import threading
 import os, sqlite3, threading, webbrowser, time, csv
 
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
+
 
 import sqlite3
+
 # ── CONFIG ─────────────────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 DB_PATH = os.path.join(BASE_DIR, "messages.db")
 LEADS_CSV_PATH = os.path.join(BASE_DIR, "Leads.csv")
-PORT = 5000
+PORT = int(os.environ.get("PORT", 5000))
 
-
-import os
-from dotenv import load_dotenv
-load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
 TWILIO_NUMBERS = os.environ.get("TWILIO_NUMBERS", "").split(",")
