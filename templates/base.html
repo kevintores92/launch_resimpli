@@ -8,17 +8,82 @@
 </head>
 <body>
   <!-- Sidebar Menu -->
+
   <div class="sidebar">
     <ul>
-      <li><a href="/dashboard"><span aria-hidden="true">💻</span><span>Dashboard</span></a></li>
+      <li><a href="/"><span aria-hidden="true">💻</span><span>Dashboard</span></a></li>
       <li><a href="/inbox"><span aria-hidden="true">💬</span><span>Inbox</span></a></li>
       <li><a href="/direct-import"><span aria-hidden="true">📄</span><span>List</span></a></li>
       <li><a href="/batch-sender"><span aria-hidden="true">👥</span><span>Batch Sender</span></a></li>
       <li><a href="/drip-automations"><span aria-hidden="true">📩</span><span>Drip Automations</span></a></li>
       <li><a href="#" id="sidebarPhone"><span aria-hidden="true">📞</span><span>Phone</span></a></li>
       <li><a href="#" id="sidebarText"><span aria-hidden="true">💬</span><span>Text</span></a></li>
+  <li><a href="#" id="sidebarAddContact"><span aria-hidden="true">➕</span><span>Add Contact</span></a></li>
       <li><a href="/settings"><span aria-hidden="true">⚙️</span><span>Settings</span></a></li>
     </ul>
+  </div>
+
+  <!-- Add Contact Popup -->
+  <div id="addContactPopup" class="modal-popup" style="display:none;">
+    <div class="modal-overlay" onclick="closeAddContactPopup(event)"></div>
+    <div class="modal-content">
+      <button class="modal-close" onclick="closeAddContactPopup(event)">&times;</button>
+  <h3>➕ Add New Contact</h3>
+      <form id="addContactForm">
+  <input type="text" name="name" placeholder="Name" class="dialer-input" />
+  <input type="text" name="phone" placeholder="Phone (required)" class="dialer-input" required />
+  <input type="text" name="address" placeholder="Address" class="dialer-input" />
+  <input type="text" name="mailing_address" placeholder="Mailing Address" class="dialer-input" />
+  <input type="text" name="campaign" placeholder="Campaign" class="dialer-input" />
+  <input type="text" name="tag" placeholder="Tag" class="dialer-input" />
+  <textarea name="notes" placeholder="Notes" class="dialer-input"></textarea>
+  <button type="submit" class="dialer-call">Add Contact</button>
+      </form>
+    </div>
+  </div>
+  <!-- Drip Assignment Popup -->
+  <div id="dripPopup" style="display:none;"></div>
+
+  <!-- Phone Dialer Popup -->
+  <div id="phonePopup" class="modal-popup" style="display:none;">
+    <div class="modal-overlay" onclick="closePhonePopup(event)"></div>
+    <div class="modal-content">
+      <button class="modal-close" onclick="closePhonePopup(event)">&times;</button>
+      <h3>📞 Phone Dialer</h3>
+      <label for="callerId" class="dialer-label">Caller ID</label>
+      <select id="callerId" class="dialer-select">
+        {% for num in TWILIO_NUMBERS %}
+          <option value="{{ num }}">{{ num }}</option>
+        {% endfor %}
+      </select>
+      <input id="dialNumber" class="dialer-input" type="text" placeholder="Enter number" />
+      <div class="dialpad-grid">
+        {% for row in [[1,2,3],[4,5,6],[7,8,9],["*",0,"#"]] %}
+          {% for d in row %}
+            <button type="button" class="dialer-btn" onclick="appendDigit('{{ d }}')">{{ d }}</button>
+          {% endfor %}
+        {% endfor %}
+      </div>
+      <button class="dialer-call" onclick="startCall()">📞 Call</button>
+    </div>
+  </div>
+
+  <!-- Text Message Popup -->
+  <div id="textPopup" class="modal-popup" style="display:none;">
+    <div class="modal-overlay" onclick="closeTextPopup(event)"></div>
+    <div class="modal-content">
+      <button class="modal-close" onclick="closeTextPopup(event)">&times;</button>
+      <h3>💬 Send Text Message</h3>
+      <label for="msgFrom" class="dialer-label">From</label>
+      <select id="msgFrom" class="dialer-select">
+        {% for num in TWILIO_NUMBERS %}
+          <option value="{{ num }}">{{ num }}</option>
+        {% endfor %}
+      </select>
+      <input id="msgTo" class="dialer-input" type="text" placeholder="To" />
+      <textarea id="newMsgBody" class="dialer-input" placeholder="Type message..."></textarea>
+      <button id="createMsgBtn" class="dialer-call">📩 Send</button>
+    </div>
   </div>
 
   <!-- Main Page Content -->
@@ -156,52 +221,36 @@
         });
       }
     });
+    // === Add Contact Popup ===
+    document.getElementById('sidebarAddContact').addEventListener('click', function(e) {
+      e.preventDefault();
+      document.getElementById('addContactPopup').style.display = 'block';
+    });
+    window.closeAddContactPopup = function(e) {
+      if (!e || e.target.classList.contains('modal-overlay') || e.target.classList.contains('modal-close')) {
+        document.getElementById('addContactPopup').style.display = 'none';
+      }
+    };
+    document.getElementById('addContactForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const form = e.target;
+      const data = Object.fromEntries(new FormData(form));
+      if (!data.phone) { alert('Phone is required'); return; }
+      const res = await fetch('/add-contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      const result = await res.json();
+      if (result.success) {
+        alert('Contact added!');
+        form.reset();
+        document.getElementById('addContactPopup').style.display = 'none';
+      } else {
+        alert('Error: ' + (result.error || 'Unknown error'));
+      }
+    });
   </script>
-
-  <!-- Drip Assignment Popup -->
-  <div id="dripPopup" style="display:none;"></div>
-
-  <!-- Phone Dialer Popup -->
-  <div id="phonePopup" class="modal-popup" style="display:none;">
-    <div class="modal-overlay" onclick="closePhonePopup(event)"></div>
-    <div class="modal-content">
-      <button class="modal-close" onclick="closePhonePopup(event)">&times;</button>
-      <h3>📞 Phone Dialer</h3>
-      <label for="callerId" class="dialer-label">Caller ID</label>
-      <select id="callerId" class="dialer-select">
-        {% for num in TWILIO_NUMBERS %}
-          <option value="{{ num }}">{{ num }}</option>
-        {% endfor %}
-      </select>
-      <input id="dialNumber" class="dialer-input" type="text" placeholder="Enter number" />
-      <div class="dialpad-grid">
-        {% for row in [[1,2,3],[4,5,6],[7,8,9],["*",0,"#"]] %}
-          {% for d in row %}
-            <button type="button" class="dialer-btn" onclick="appendDigit('{{ d }}')">{{ d }}</button>
-          {% endfor %}
-        {% endfor %}
-      </div>
-      <button class="dialer-call" onclick="startCall()">📞 Call</button>
-    </div>
-  </div>
-
-  <!-- Text Message Popup -->
-  <div id="textPopup" class="modal-popup" style="display:none;">
-    <div class="modal-overlay" onclick="closeTextPopup(event)"></div>
-    <div class="modal-content">
-      <button class="modal-close" onclick="closeTextPopup(event)">&times;</button>
-      <h3>💬 Send Text Message</h3>
-      <label for="msgFrom" class="dialer-label">From</label>
-      <select id="msgFrom" class="dialer-select">
-        {% for num in TWILIO_NUMBERS %}
-          <option value="{{ num }}">{{ num }}</option>
-        {% endfor %}
-      </select>
-      <input id="msgTo" class="dialer-input" type="text" placeholder="To" />
-      <textarea id="newMsgBody" class="dialer-input" placeholder="Type message..."></textarea>
-      <button id="createMsgBtn" class="dialer-call">📩 Send</button>
-    </div>
-  </div>
 </body>
 </html>
 

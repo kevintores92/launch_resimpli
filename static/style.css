@@ -1,57 +1,3 @@
-/* --- Generic Modal Popup Styling (for Phone/Text popups) --- */
-.modal-popup {
-  display: none;
-  position: fixed;
-  top: 0; left: 0; width: 100vw; height: 100vh;
-  z-index: 30000;
-  align-items: center;
-  justify-content: center;
-}
-.modal-popup[style*="display:block"] {
-  display: flex !important;
-}
-.modal-overlay {
-  position: absolute;
-  top: 0; left: 0; width: 100vw; height: 100vh;
-  background: rgba(0,0,0,0.45);
-  z-index: 1;
-}
-.modal-content {
-  position: relative;
-  z-index: 2;
-  background: #fff;
-  border-radius: 14px;
-  box-shadow: 0 8px 40px #0005;
-  padding: 32px 32px 24px 32px;
-  min-width: 220px;
-  width: 49vw;
-  max-width: 320px;
-  min-height: 120px;
-  max-height: 67vh;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  cursor: move;
-}
-
-/* Draggable modal: visually indicate drag area */
-.modal-content:active, .modal-content.dragging {
-  box-shadow: 0 12px 48px #0007;
-  opacity: 0.98;
-}
-.modal-close {
-  position: absolute;
-  top: 12px;
-  right: 18px;
-  font-size: 2em;
-  color: #888;
-  background: none;
-  border: none;
-  cursor: pointer;
-  z-index: 3;
-  line-height: 1;
-}
 /* --- Root Variables: Light Theme --- */
 :root { --bg: #ffffff; --bg-alt: #f9fafb; --bg-white: #ffffff; --text: #1f2937; --text-muted: #6b7280; --primary: #2563eb; --primary-hover: #1d4ed8; --accent: #2196f3; --border: #e5e7eb; --shadow-light: 0 2px 10px rgba(0,0,0,0.1); --shadow-medium: 0 3px 10px rgba(0,0,0,0.12); --radius: 10px; --padding: 1rem; --fast: 0.1s ease; --normal: 0.35s ease; --font-base: 0.8125rem; --font-family: 'Poppins', 'Roboto', 'Segoe UI', Arial, sans-serif; }
 html { font-size: 100%; }
@@ -299,3 +245,44 @@ input:focus, textarea:focus, select:focus { border-color: var(--primary); box-sh
 .mission-control li { cursor: pointer; text-align: center; }
 .square-icon-box { font-size: 16px; }
 .mission-callout { background: #007bff; color: #fff; border-radius: 50%; padding: 2px 6px; font-size: 11px; display: inline-block; margin-top: 3px; min-width: 20px; text-align: center; }
+
+/* --- Dashboard Grid Layout --- */
+.dashboard-grid-main { width: 100%; max-width: 1600px; margin: 0 auto; padding: 0 0 32px 0; background: var(--bg-alt); }
+.dashboard-grid-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin: 0 auto 18px auto; width: 100%; max-width: 1600px; }
+.dashboard-grid-kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 0 auto 18px auto; width: 100%; max-width: 1600px; }
+.dashboard-grid-charts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; margin: 0 auto; width: 100%; max-width: 1600px; }
+.kpi-card, .chart-card { background: var(--bg-alt); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 2px 10px rgba(0,0,0,0.04); min-width: 0; min-height: 260px; max-height: 260px; display: flex; flex-direction: column; justify-content: flex-start; align-items: stretch; padding: 18px 18px 12px 18px; }
+.chart-card h3, .kpi-card h3 { margin-bottom: 8px; }
+.chart-card canvas, .kpi-card canvas { width: 100% !important; height: 180px !important; max-width: 100%; max-height: 180px; min-height: 180px; display: block; margin: 0 auto; }
+@media (max-width: 1200px) {
+  .dashboard-grid-cards, .dashboard-grid-kpis, .dashboard-grid-charts { grid-template-columns: 1fr; width: 99vw; max-width: 99vw; }
+}
+/* --- Dashboard Wide Container --- */
+.dashboard-wide-container { max-width: 1800px; }
+/* --- Fixed Chart Card and Canvas Height --- */
+.chart-card { height: 260px; min-height: 260px; max-height: 260px; display: flex; flex-direction: column; justify-content: flex-start; }
+.chart-card h3 { margin-bottom: 8px; }
+.chart-card canvas { width: 100% !important; height: 180px !important; max-width: 100%; max-height: 180px; min-height: 180px; display: block; margin: 0 auto; }
+/* --- Dashboard Charts Row Layout --- */
+.dashboard-charts-row { display: flex; flex-direction: row; gap: 24px; margin-bottom: 18px; flex-wrap: wrap; justify-content: flex-start; }
+.dashboard-charts-row .chart-card { min-width: 0; flex: 1 1 320px; align-items: stretch; }
+@media (max-width: 900px) {
+  .dashboard-charts-row { flex-direction: column; gap: 12px; }
+}
+/* --- Dashboard Flex Layout --- */
+.dashboard-flex-row { display: flex; flex-direction: row; gap: 24px; margin-bottom: 32px; flex-wrap: wrap; }
+.dashboard-col { display: flex; flex-direction: column; align-items: stretch; background: none; }
+.chart-card { background: var(--bg-alt); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 2px 10px rgba(0,0,0,0.04); margin-bottom: 18px; padding: 18px 18px 12px 18px; min-width: 0; }
+.chart-card.wide { max-width: 100%; }
+@media (max-width: 900px) {
+  .dashboard-flex-row { flex-direction: column; gap: 12px; }
+  .dashboard-col { max-width: 100%; }
+}
+/* --- Generic Modal Popup Styling (for Phone/Text popups) --- */
+.modal-popup { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 30000; align-items: center; justify-content: center; }
+.modal-popup[style*="display:block"] { display: flex !important; }
+.modal-overlay { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.45); z-index: 1; }
+.modal-content { position: relative; z-index: 2; background: #fff; border-radius: 14px; box-shadow: 0 8px 40px #0005; padding: 32px 32px 24px 32px; min-width: 220px; width: 49vw; max-width: 320px; min-height: 120px; max-height: 67vh; overflow-y: auto; display: flex; flex-direction: column; align-items: stretch; cursor: move; }
+/* Draggable modal: visually indicate drag area */
+.modal-content:active, .modal-content.dragging { box-shadow: 0 12px 48px #0007; opacity: 0.98; }
+.modal-close { position: absolute; top: 12px; right: 18px; font-size: 2em; color: #888; background: none; border: none; cursor: pointer; z-index: 3; line-height: 1; }

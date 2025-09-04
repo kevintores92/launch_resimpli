@@ -97,6 +97,7 @@ def send_sms_batch(max_texts, min_interval, max_interval, progress_callback=None
         sender_number = SENDER_NUMBERS[sender_idx % len(SENDER_NUMBERS)]
         sender_idx += 1
 
+
         try:
             client.messages.create(
                 body=message,
@@ -106,6 +107,20 @@ def send_sms_batch(max_texts, min_interval, max_interval, progress_callback=None
             contact['Status'] = now_str
             contact['Message Used'] = template
             sent_count += 1
+
+            # --- Log message to DB and emit to frontend ---
+            try:
+                from Ace_Messenger import log_message
+                log_message(
+                    phone=phone if phone.startswith('+') else f'+1{phone}',
+                    direction="outbound",
+                    body=message,
+                    status="sent",
+                    timestamp=now_str,
+                    twilio_number=sender_number
+                )
+            except Exception as e:
+                print(f"[Batch] Failed to log message for {phone}: {e}")
 
             batch_row = dict(contact)
             batch_row['Batch'] = batch_id

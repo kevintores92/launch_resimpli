@@ -25,14 +25,16 @@
                 data-phone="{{ thread.phone }}"
                 data-tag="{{ thread.tag or 'No tag' }}"
                 {% if drip_name %}data-tooltip="{{ drip_name }}" title="{{ drip_name }}"{% else %}title="{{ thread.tag or 'No tag' }}"{% endif %}>
-            {% if drip_name %}Drip{% else %}{{ tag_icons.get(thread.tag or 'No tag', '🏷️') }}{% endif %}
+            {% if thread.tag == 'Drip' or (thread.tag and thread.tag.startswith('Drip')) %}💧{% elif thread.tag == 'Wrong Number' %}❗{% elif thread.tag == 'Not interested' %}❌{% else %}{{ tag_icons.get(thread.tag or 'No tag', '🏷️') }}{% endif %}
           </span>
           <span class="tag-menu">
             {% for tag in tags %}
               <span class="tag-option"
                     data-tag="{{ tag }}"
-                    title="{{ tag }}">
-                {{ tag_icons.get(tag, '🏷️') }}
+                    title="{{ tag }}"
+                    onclick="assignTagToThread('{{ thread.phone }}', '{{ tag }}')"
+                    style="cursor:pointer;">
+                {% if tag == 'Wrong Number' %}❗{% elif tag == 'Not interested' %}❌{% else %}{{ tag_icons.get(tag, '🏷️') }}{% endif %}
               </span>
             {% endfor %}
           </span>

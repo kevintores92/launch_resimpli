@@ -1,3 +1,57 @@
+// === Assign tag from thread list ===
+function assignTagToThread(phone, tag) {
+  fetch('/update-contact', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone: phone, tag: tag })
+  }).then(r => r.json()).then(result => {
+    if (result.success) {
+      selectedtag = tag;
+      updateThreadtagChip(phone, tag);
+      rendertagChips(tag);
+      showTempMessage('Tag updated!');
+    } else {
+      alert('Error updating tag: ' + (result.error || 'Unknown error'));
+    }
+  });
+}
+// === Inline Edit Contact ===
+function showEditContactForm(contact) {
+  const extraDiv = document.getElementById('contact-extra');
+  if (!extraDiv) return;
+  extraDiv.innerHTML = `
+    <form id="editContactForm">
+      <input type="text" name="name" value="${contact.name||''}" placeholder="Name" class="dialer-input" />
+      <input type="text" name="phone" value="${contact.phone||''}" placeholder="Phone (required)" class="dialer-input" required readonly />
+      <input type="text" name="tag" value="${contact.tag||''}" placeholder="Tag" class="dialer-input" />
+      <textarea name="notes" placeholder="Notes" class="dialer-input">${contact.notes||''}</textarea>
+      <button type="submit" class="dialer-call">Save</button>
+      <button type="button" onclick="cancelEditContact()" class="dialer-call" style="background:#aaa;">Cancel</button>
+    </form>
+  `;
+  document.getElementById('editContactForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const form = e.target;
+    const data = Object.fromEntries(new FormData(form));
+    const res = await fetch('/update-contact', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const result = await res.json();
+    if (result.success) {
+      showTempMessage('Contact updated!');
+      // Optionally reload thread/contact info here
+    } else {
+      alert('Error: ' + (result.error || 'Unknown error'));
+    }
+  });
+}
+function cancelEditContact() {
+  // Optionally reload the original contact-extra view
+  // For now, just clear the form
+  document.getElementById('contact-extra').innerHTML = '';
+}
 // === Helper: Temporary toast messages ===
 function showTempMessage(msg) {
   const toast = document.createElement('div');
@@ -65,7 +119,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById(id).classList.remove("active")
     );
     const filterDropdown = document.querySelector(".tag-filter-dropdown");
-      if (filterDropdown) {
+    if (filterDropdown) {
         const toggle = filterDropdown.querySelector(".tag-filter-toggle");
         const menu = filterDropdown.querySelector(".tag-filter-menu");
         const options = menu.querySelectorAll(".tag-option");
@@ -89,33 +143,33 @@ document.addEventListener('DOMContentLoaded', () => {
           if (box === "inbox") {
             const exclude = ["DNC", "Wrong Number", "Not interested", "__ALL__", "Unverified"];
             selectedTags = Array.from(options)
-              .map(o => o.dataset.value)
-              .filter(v => !exclude.includes(v));
+              .map(function(o) { return o.dataset.value; })
+              .filter(function(v) { return exclude.indexOf(v) === -1; });
           }
         }
 
         // Highlight selected tags
-        options.forEach(opt => {
-          if (selectedTags.includes(opt.dataset.value)) {
+        options.forEach(function(opt) {
+          if (selectedTags.indexOf(opt.dataset.value) !== -1) {
             opt.classList.add("selected");
           }
         });
 
         // === Track changes ===
         function updateApplyState() {
-          const current = Array.from(menu.querySelectorAll(".tag-option.selected"))
-            .map(o => o.dataset.value)
+          var current = Array.from(menu.querySelectorAll(".tag-option.selected"))
+            .map(function(o) { return o.dataset.value; })
             .sort();
-          const baseline = [...selectedTags].sort();
+          var baseline = selectedTags.slice().sort();
 
-          const changed = JSON.stringify(current) !== JSON.stringify(baseline);
+          var changed = JSON.stringify(current) !== JSON.stringify(baseline);
           applyBtn.classList.toggle("disabled", !changed);
         }
         updateApplyState(); // initial check
 
         // Toggle highlight on click
-        options.forEach(opt => {
-          opt.addEventListener("click", (e) => {
+        options.forEach(function(opt) {
+          opt.addEventListener("click", function(e) {
             e.stopPropagation();
             opt.classList.toggle("selected");
             updateApplyState();
@@ -123,21 +177,21 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // Apply button → refresh page if active
-        applyBtn.addEventListener("click", (e) => {
+        applyBtn.addEventListener("click", function(e) {
           e.stopPropagation();
           if (applyBtn.classList.contains("disabled")) return;
 
-          const selected = Array.from(menu.querySelectorAll(".tag-option.selected"))
-            .map(o => o.dataset.value);
+          var selected = Array.from(menu.querySelectorAll(".tag-option.selected"))
+            .map(function(o) { return o.dataset.value; });
 
-          const url = new URL(window.location.href);
+          var url = new URL(window.location.href);
           url.searchParams.delete("tags");
-          selected.forEach(tag => url.searchParams.append("tags", tag));
+          selected.forEach(function(tag) { url.searchParams.append("tags", tag); });
           url.searchParams.set("page", 1);
 
           window.location.href = url.toString();
         });
-      }
+    }
 
 });
 
@@ -218,11 +272,11 @@ function addToLeads() {
     body: JSON.stringify({ phone: currentPhone })
   })
   .then(res => res.json())
-  .then(data => {
+  .then(function(data) {
     if (data.success) showTempMessage("Lead added to memory. Will be saved to Leads.csv on app exit.");
     else showTempMessage("Error: " + data.error);
   })
-  .catch(err => showTempMessage("An unexpected error occurred: " + err));
+  .catch(function(err) { showTempMessage("An unexpected error occurred: " + err); });
 }
 
 // === Globals ===
@@ -305,7 +359,7 @@ socket.on("new_message", data => {
     // Banner already exists, increment count and update text
     const info = activeBanners[phone];
     info.count++;
-    info.banner.textContent = `📩 ${direction} message from ${phone}: "${body}" (${info.count} new messages)`;
+    info.banner.textContent = '📩 ' + direction + ' message from ' + phone + ': "' + body + '" (' + info.count + ' new messages)';
 
     // Reset auto-remove timer
     clearTimeout(info.timeout);
@@ -318,7 +372,7 @@ socket.on("new_message", data => {
     // Create new banner
     const banner = document.createElement("div");
     banner.className = "notify-banner";
-    banner.textContent = `📩 ${direction} message from ${phone}: "${body}" (1 new message)`;
+    banner.textContent = '📩 ' + direction + ' message from ' + phone + ': "' + body + '" (1 new message)';
 
     // Click → open thread immediately and remove banner
     banner.addEventListener("click", () => {
@@ -521,7 +575,7 @@ function rendertagChips(selected) {
     // Highlight assigned drip chip
     chip.className = 'chip tag-chip' + ((selected === tag || (tag === 'Drip' && dripName)) ? ' selected' : '');
     if (tag === 'Drip') {
-      chip.textContent = '💧';
+      chip.textContent = tagIcons['Drip'] || '💧';
       chip.title = dripName ? dripName : 'Drip';
       if (dripName) chip.setAttribute('data-tooltip', dripName);
       chip.onclick = () => {
@@ -529,6 +583,10 @@ function rendertagChips(selected) {
         rendertagChips(selectedtag);
         showDripAssignmentPopup(currentPhone);
       };
+    } else if (tag === 'Wrong Number') {
+      chip.textContent = tagIcons['Wrong Number'] || '❗';
+    } else if (tag === 'Not interested') {
+      chip.textContent = tagIcons['Not interested'] || '❌';
     } else {
       chip.textContent = tagIcons[tag] || "🏷️";
       chip.title = tag;
@@ -677,17 +735,16 @@ function loadThread(phone) {
     .then(r => r.json())
     .then(data => {
       const messagesDiv = document.getElementById("messages");
-      messagesDiv.innerHTML = data.messages.map(m => {
-        const body = m.body || "";
-        const timestamp = m.timestamp || "";
-        const messageClass = m.is_outbound ? 'message outbound' : 'message inbound';
-        return `
-          <div class="${messageClass}">
-            <div class="message-content">
-              <div class="bubble">${body}</div>
-              <div class="message-meta"><div class="timestamp">${timestamp}</div></div>
-            </div>
-          </div>`;
+      messagesDiv.innerHTML = data.messages.map(function(m) {
+        var body = m.body || "";
+        var timestamp = m.timestamp || "";
+        var messageClass = m.is_outbound ? 'message outbound' : 'message inbound';
+        return '<div class="' + messageClass + '">' +
+          '<div class="message-content">' +
+          '<div class="bubble">' + body + '</div>' +
+          '<div class="message-meta"><div class="timestamp">' + timestamp + '</div></div>' +
+          '</div>' +
+          '</div>';
       }).join("");
       setTimeout(() => { messagesDiv.scrollTop = messagesDiv.scrollHeight; }, 50);
 
@@ -701,28 +758,59 @@ function loadThread(phone) {
       // Extra contact info
       const contactExtra = document.getElementById("contact-extra");
       if (contactExtra) {
-        let allHtml = `<div class="contact-extra-grid">`;
+        var allHtml = '<div class="contact-extra-grid">';
         if (data.contact_headers && data.contact_all) {
-          for (let i = 0; i < data.contact_headers.length; i++) {
-            const key = data.contact_headers[i];
-            const val = data.contact_all[key] || "";
-            if (val && val.trim()) {
-              if (key.toLowerCase().includes("zillow")) {
-                allHtml += `
-                  <div class="contact-key">${key}</div>
-                  <div class="contact-val"><a href="${val}" target="_blank" rel="noopener noreferrer">${val}</a></div>
-                `;
-              } else {
-                allHtml += `
-                  <div class="contact-key">${key}</div>
-                  <div class="contact-val">${val}</div>
-                `;
-              }
+          for (var i = 0; i < data.contact_headers.length; i++) {
+            var key = data.contact_headers[i];
+            var val = data.contact_all[key] || "";
+            if (key.toLowerCase().indexOf("zillow") !== -1) {
+              allHtml += '<div class="contact-key">' + key + '</div>' +
+                '<div class="contact-val"><a href="' + val + '" target="_blank" rel="noopener noreferrer">' + val + '</a></div>';
+            } else {
+              allHtml += '<div class="contact-key">' + key + '</div>' +
+                '<div class="contact-val">' +
+                '<input type="text" value="' + val.replace(/"/g, '&quot;') + '" data-key="' + key + '" class="contact-inline-input" style="width:90%" disabled />' +
+                '<button class="contact-inline-save" data-key="' + key + '" style="margin-left:4px;display:none;">💾</button>' +
+                '</div>';
             }
           }
         }
-        allHtml += "</div>";
+        allHtml += '</div>' +
+          '<div style="margin-top:10px;">' +
+            '<button id="editContactBtn" class="dialer-call">Edit Contact</button>' +
+            '<button id="saveContactBtn" class="dialer-call" style="display:none;">Save</button>' +
+          '</div>' +
+          '<div id="editConfirmModal" class="modal-popup" style="display:none;">' +
+            '<div class="modal-overlay"></div>' +
+            '<div class="modal-content">' +
+              '<h3>Unsaved Changes</h3>' +
+              '<p>You have unsaved changes. What would you like to do?</p>' +
+              '<button id="confirmSaveBtn" class="dialer-call">Save</button>' +
+              '<button id="confirmDiscardBtn" class="dialer-call" style="background:#aaa;">Discard</button>' +
+            '</div>' +
+          '</div>';
         contactExtra.innerHTML = allHtml;
+        // Add save listeners
+        contactExtra.querySelectorAll('.contact-inline-save').forEach(btn => {
+          btn.addEventListener('click', function(e) {
+            const key = btn.getAttribute('data-key');
+            const input = contactExtra.querySelector('input[data-key="' + key + '"]');
+            const value = input.value;
+            fetch('/update-contact', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ phone: data.contact_all.phone, [key]: value })
+            }).then(r => r.json()).then(result => {
+              if (result.success) {
+                input.style.background = '#d4ffd4';
+                setTimeout(() => { input.style.background = ''; }, 800);
+              } else {
+                input.style.background = '#ffd4d4';
+                alert('Error updating: ' + (result.error || 'Unknown error'));
+              }
+            });
+          });
+        });
       }
 
       // Re-attach notes listeners AFTER the notes field is re-rendered
@@ -862,7 +950,7 @@ function markThreadUnread(phone) {
     const nameLabel = threadDiv.querySelector(".thread-name-label");
     if (nameLabel) {
       nameLabel.insertAdjacentHTML("afterend",
-        `<span class="unread-badge" style="color:red; margin-left:6px;">●</span>`
+        '<span class="unread-badge" style="color:red; margin-left:6px;">●</span>'
       );
     }
   }
@@ -873,7 +961,7 @@ function markThreadUnread(phone) {
     const nameLabel = searchDiv.querySelector(".thread-name-label");
     if (nameLabel) {
       nameLabel.insertAdjacentHTML("afterend",
-        `<span class="unread-badge" style="color:red; margin-left:6px;">●</span>`
+        '<span class="unread-badge" style="color:red; margin-left:6px;">●</span>'
       );
     }
   }

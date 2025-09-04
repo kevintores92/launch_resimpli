@@ -17,7 +17,10 @@ TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 DB_PATH = os.path.join(BASE_DIR, "messages.db")
 LEADS_CSV_PATH = os.path.join(BASE_DIR, "Leads.csv")
+
 PORT = 5000
+# KPI Dashboard config
+KPIS_DB_PATH = r"C:\Users\admin\Desktop\Ace Holdings\sms_kpis.db"
 
 
 import os
@@ -35,6 +38,11 @@ client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 batch_status = {"sent": 0, "total": 0, "running": False}
 BASE_DIR = os.path.dirname(__file__)
 BATCH_CSV = os.path.join(BASE_DIR, 'Batch.csv')
+
+# --- Context processor to inject TWILIO_NUMBERS into all templates ---
+@app.context_processor
+def inject_twilio_numbers():
+    return {"TWILIO_NUMBERS": TWILIO_NUMBERS}
 
 # --- MIGRATION: Ensure contact_drip_assignments table exists ---
 def ensure_drip_assignment_table():
@@ -264,7 +272,14 @@ def drip_scheduler_loop():
 drip_thread = threading.Thread(target=drip_scheduler_loop, daemon=True)
 drip_thread.start()
 
-
+# --- Provide contact columns for forms ---
+def get_contact_columns():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("PRAGMA table_info(contacts)")
+    columns = [row[1] for row in c.fetchall()]
+    conn.close()
+    return columns
 
 def get_conversation(phone):
     conn = sqlite3.connect(DB_PATH)
@@ -463,26 +478,139 @@ from datetime import datetime
 app = Flask(__name__)
 
 @app.route("/")
+@app.route("/", methods=["GET"])
+@app.route("/dashboard", methods=["GET"])
+def dashboard():
+    # Get week from query param, default to latest week in DB
+    week = request.args.get("week")
+    weeks = get_available_weeks()
+    if not week and weeks:
+        week = weeks[-1]  # latest week
+    dates, sent, delivered, delivery_rate, replies, latest = load_kpi_rows_for_week(week)
+    lead_breakdown = get_lead_breakdown()
+    top_campaigns = get_top_campaigns()
+    return render_template("kpi_dashboard.html",
+                          dates=dates,
+                          sent=sent,
+                          delivered=delivered,
+                          delivery_rate=delivery_rate,
+                          replies=replies,
+                          latest=latest,
+                          lead_breakdown=lead_breakdown,
+                          top_campaigns=top_campaigns,
+                          weeks=weeks,
+                          selected_week=week)
+
+# Helper: get all weeks (Mon-Sun) with data in messages table
+def get_available_weeks():
+    if not os.path.exists(DB_PATH):
+        return []
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT MIN(date(timestamp)), MAX(date(timestamp)) FROM messages")
+    min_date, max_date = c.fetchone()
+    if not min_date or not max_date:
+        return []
+    from datetime import datetime, timedelta
+    min_dt = datetime.strptime(min_date, "%Y-%m-%d")
+    max_dt = datetime.strptime(max_date, "%Y-%m-%d")
+    # Find first Monday on/after min_dt
+    start = min_dt - timedelta(days=(min_dt.weekday()))
+    weeks = []
+    cur = start
+    while cur <= max_dt:
+        end = cur + timedelta(days=6)
+        label = f"{cur.strftime('%Y-%m-%d')} to {end.strftime('%Y-%m-%d')}"
+        weeks.append(label)
+        cur += timedelta(days=7)
+    conn.close()
+    return weeks
+
+# Helper: load KPI rows for a given week (label: YYYY-MM-DD to YYYY-MM-DD)
+def load_kpi_rows_for_week(week_label):
+    if not os.path.exists(DB_PATH) or not week_label:
+        return [], [], [], [], [], {"total_sent": 0, "total_delivered": 0, "total_replies": 0, "avg_reply_time": "N/A"}
+    start_str, end_str = week_label.split(' to ')
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    from datetime import datetime, timedelta
+    start = datetime.strptime(start_str, "%Y-%m-%d")
+    end = datetime.strptime(end_str, "%Y-%m-%d")
+    num_days = (end - start).days + 1
+    dates = [(start + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(num_days)]
+    sent, delivered, replies = [], [], []
+    for d in dates:
+        c.execute("SELECT COUNT(*) FROM messages WHERE direction LIKE 'outbound%' AND date(timestamp)=?", (d,))
+        sent.append(c.fetchone()[0])
+        c.execute("SELECT COUNT(*) FROM messages WHERE direction LIKE 'outbound%' AND status='delivered' AND date(timestamp)=?", (d,))
+        delivered.append(c.fetchone()[0])
+        c.execute("SELECT COUNT(*) FROM messages WHERE direction='inbound' AND date(timestamp)=?", (d,))
+        replies.append(c.fetchone()[0])
+    delivery_rate = [round((d/s)*100,2) if s else 0 for s,d in zip(sent, delivered)]
+    latest = {"total_sent": sent[-1] if sent else 0,
+              "total_delivered": delivered[-1] if delivered else 0,
+              "total_replies": replies[-1] if replies else 0,
+              "avg_reply_time": "N/A"}
+    conn.close()
+    return dates, sent, delivered, delivery_rate, replies, latest
+
+# Helper: get all months with data in messages table
+def get_available_months():
+    if not os.path.exists(DB_PATH):
+        return []
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT DISTINCT strftime('%Y-%m', timestamp) as ym FROM messages ORDER BY ym")
+    months = [row[0] for row in c.fetchall() if row[0]]
+    conn.close()
+    return months
+
+# Helper: load KPI rows for a given month (YYYY-MM)
+def load_kpi_rows_for_month(month):
+    if not os.path.exists(DB_PATH) or not month:
+        return [], [], [], [], [], {"total_sent": 0, "total_delivered": 0, "total_replies": 0, "avg_reply_time": "N/A"}
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    # Get all days in the month
+    c.execute("SELECT MIN(date(timestamp)), MAX(date(timestamp)) FROM messages WHERE strftime('%Y-%m', timestamp)=?", (month,))
+    min_date, max_date = c.fetchone()
+    if not max_date:
+        return [], [], [], [], [], {"total_sent": 0, "total_delivered": 0, "total_replies": 0, "avg_reply_time": "N/A"}
+    from datetime import datetime, timedelta
+    start = datetime.strptime(min_date, "%Y-%m-%d")
+    end = datetime.strptime(max_date, "%Y-%m-%d")
+    num_days = (end - start).days + 1
+    dates = [(start + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(num_days)]
+    sent, delivered, replies = [], [], []
+    for d in dates:
+        c.execute("SELECT COUNT(*) FROM messages WHERE direction LIKE 'outbound%' AND date(timestamp)=?", (d,))
+        sent.append(c.fetchone()[0])
+        c.execute("SELECT COUNT(*) FROM messages WHERE direction LIKE 'outbound%' AND status='delivered' AND date(timestamp)=?", (d,))
+        delivered.append(c.fetchone()[0])
+        c.execute("SELECT COUNT(*) FROM messages WHERE direction='inbound' AND date(timestamp)=?", (d,))
+        replies.append(c.fetchone()[0])
+    delivery_rate = [round((d/s)*100,2) if s else 0 for s,d in zip(sent, delivered)]
+    latest = {"total_sent": sent[-1] if sent else 0,
+              "total_delivered": delivered[-1] if delivered else 0,
+              "total_replies": replies[-1] if replies else 0,
+              "avg_reply_time": "N/A"}
+    conn.close()
+    return dates, sent, delivered, delivery_rate, replies, latest
+
 @app.route("/inbox")
 def inbox():
     search = request.args.get("search", "")
     box = request.args.get("box", "inbox")
     tags_filter = request.args.getlist("tags")
     selected_phone = request.args.get("selected")
-
     from_date = request.args.get("from")
     to_date = request.args.get("to")
-
-    # fetch all threads
     all_threads = get_threads(search=search, box=box)
-
     if box == 'unread':
         all_threads = [
             t for t in all_threads
             if not t.get("tag") and t.get("latest") and t.get("latest").strip() and "inbound" in t.get("latest_direction", "inbound")
         ]
-
-    # --- Tag filtering ---
     if tags_filter:
         if "__ALL__" not in tags_filter:
             if "__NO_tag__" in tags_filter:
@@ -492,35 +620,28 @@ def inbox():
         else:
             excluded = {"DNC", "No tag", "Wrong Number", "Unverified", "Not interested"}
             all_threads = [t for t in all_threads if t.get("tag") not in excluded]
-
-    # --- Date filtering ---
     def parse_date(ts):
         try:
             return datetime.strptime(str(ts)[:10], "%Y-%m-%d").date()
         except Exception:
             return None
-
     if from_date:
         from_d = datetime.strptime(from_date, "%Y-%m-%d").date()
         all_threads = [
             t for t in all_threads
             if parse_date(t.get("timestamp")) and parse_date(t["timestamp"]) >= from_d
         ]
-
     if to_date:
         to_d = datetime.strptime(to_date, "%Y-%m-%d").date()
         all_threads = [
             t for t in all_threads
             if parse_date(t.get("timestamp")) and parse_date(t["timestamp"]) <= to_d
         ]
-
     threads = all_threads  
-
     unread_count = len([t for t in all_threads if t.get("latest_direction") == "inbound" and not t.get("read")])
     unanswered_count = len([t for t in all_threads if t.get("latest_direction") == "inbound" and not t.get("responded")])
     reminders_count = 0  # later query reminders table
     no_tags_count = len([t for t in all_threads if not t.get("tag")])
-
     return render_template(
         "dashboard.html",
         threads=threads,
@@ -537,6 +658,39 @@ def inbox():
         no_tags_count=no_tags_count
     )
 
+
+# --- Update contact endpoint ---
+@app.route("/update-contact", methods=["POST"])
+def update_contact():
+    data = request.get_json(force=True)
+    phone = data.get("phone")
+    updates = {k: v for k, v in data.items() if k != "phone"}
+    if not phone or not updates:
+        return jsonify(success=False, error="Missing phone or update fields"), 400
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    set_clause = ", ".join([f"{k}=?" for k in updates.keys()])
+    values = list(updates.values()) + [phone]
+    c.execute(f"UPDATE contacts SET {set_clause} WHERE phone=?", values)
+    conn.commit()
+    conn.close()
+    return jsonify(success=True)
+
+# --- Add contact endpoint ---
+@app.route("/add-contact", methods=["POST"])
+def add_contact():
+    data = request.get_json(force=True)
+    columns = get_contact_columns()
+    values = [data.get(col, "") for col in columns]
+    if not data.get("phone"):
+        return jsonify(success=False, error="Phone is required"), 400
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    placeholders = ", ".join(["?" for _ in columns])
+    c.execute(f"INSERT INTO contacts ({', '.join(columns)}) VALUES ({placeholders})", values)
+    conn.commit()
+    conn.close()
+    return jsonify(success=True)
 # === Drip Automations ===
 @app.route("/assign-drip", methods=["POST"])
 def assign_drip():
@@ -577,10 +731,137 @@ def drip_messages_popup(drip_id):
     conn.close()
     return render_template("drip_messages_popup.html", drip={"name": drip_name}, messages=messages)
 
-# 📊 Placeholder Dashboard page (real KPIs later)
+# === KPI Dashboard logic ===
+def get_lead_breakdown():
+    """
+    Returns a dict of tag -> count from contacts table, plus total.
+    """
+    if not os.path.exists(DB_PATH):
+        return {"Hot": 0, "Warm": 0, "Nurture": 0, "Drip": 0, "No Status": 0, "total": 0}
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    # Get all tags
+    c.execute("SELECT tag FROM contacts")
+    tags = [row[0] if row[0] else "No Status" for row in c.fetchall()]
+    from collections import Counter
+    counts = Counter(tags)
+    # Map to display names
+    mapping = {"Hot": "Hot Leads", "Warm": "Warm Leads", "Nurture": "Nurture", "Drip": "Drips", "No Status": "No Status"}
+    result = {mapping.get(k, k): v for k, v in counts.items()}
+    # Ensure all keys present
+    for k in mapping.values():
+        if k not in result:
+            result[k] = 0
+    result["total"] = sum(result[k] for k in mapping.values())
+    conn.close()
+    return result
+
+def load_kpi_rows(limit_days=60):
+    """
+    Loads rows from messages table in messages.db.
+    Returns arrays: dates (YYYY-MM-DD), sent, delivered, delivery_rate, replies, latest_row_dict
+    """
+    if not os.path.exists(DB_PATH):
+        return [], [], [], [], [], {"total_sent": 0, "total_delivered": 0, "total_replies": 0, "avg_reply_time": "N/A"}
+
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    # Get all message dates in the last N days
+    c.execute("SELECT MIN(date(timestamp)), MAX(date(timestamp)) FROM messages")
+    min_date, max_date = c.fetchone()
+    if not max_date:
+        return [], [], [], [], [], {"total_sent": 0, "total_delivered": 0, "total_replies": 0, "avg_reply_time": "N/A"}
+
+    # Build list of last limit_days dates
+    from datetime import datetime, timedelta
+    end_date = datetime.strptime(max_date, "%Y-%m-%d")
+    dates = [(end_date - timedelta(days=i)).strftime("%Y-%m-%d") for i in reversed(range(limit_days))]
+
+    sent, delivered, replies = [], [], []
+    for d in dates:
+        # Sent: outbound messages
+        c.execute("SELECT COUNT(*) FROM messages WHERE direction LIKE 'outbound%' AND date(timestamp)=?", (d,))
+        sent.append(c.fetchone()[0])
+        # Delivered: outbound messages with status delivered
+        c.execute("SELECT COUNT(*) FROM messages WHERE direction LIKE 'outbound%' AND status='delivered' AND date(timestamp)=?", (d,))
+        delivered.append(c.fetchone()[0])
+        # Replies: inbound messages
+        c.execute("SELECT COUNT(*) FROM messages WHERE direction='inbound' AND date(timestamp)=?", (d,))
+        replies.append(c.fetchone()[0])
+
+    delivery_rate = [round((d/s)*100,2) if s else 0 for s,d in zip(sent, delivered)]
+
+    # Latest day stats
+    latest = {"total_sent": 0, "total_delivered": 0, "total_replies": 0, "avg_reply_time": "N/A"}
+    if dates:
+        latest = {
+            "total_sent": sent[-1] if sent else 0,
+            "total_delivered": delivered[-1] if delivered else 0,
+            "total_replies": replies[-1] if replies else 0,
+            "avg_reply_time": "N/A"  # Not calculated here
+        }
+
+    conn.close()
+    return dates, sent, delivered, delivery_rate, replies, latest
+
+@app.route("/")
 @app.route("/dashboard")
+def get_top_campaigns(limit=3):
+    """
+    Returns a list of dicts: [{name, Hot, Warm, Nurture, Drip}], sorted by total leads desc.
+    """
+    if not os.path.exists(DB_PATH):
+        return []
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    # Assume campaign name is in 'campaign' column. If not, fallback to 'Campaign' or similar.
+    # Get all campaigns and tags
+    try:
+        c.execute("SELECT campaign, tag FROM contacts")
+    except Exception:
+        try:
+            c.execute("SELECT Campaign, tag FROM contacts")
+        except Exception:
+            return []
+    rows = c.fetchall()
+    from collections import defaultdict, Counter
+    camp_tags = defaultdict(list)
+    for camp, tag in rows:
+        camp = camp or "(No Campaign)"
+        tag = tag or "No Status"
+        camp_tags[camp].append(tag)
+    # Count tags per campaign
+    tag_map = {"Hot": "Hot", "Warm": "Warm", "Nurture": "Nurture", "Drip": "Drip", "No Status": "No Status"}
+    result = []
+    for camp, tags in camp_tags.items():
+        counts = Counter(tags)
+        result.append({
+            "name": camp,
+            "Hot": counts.get("Hot", 0),
+            "Warm": counts.get("Warm", 0),
+            "Nurture": counts.get("Nurture", 0),
+            "Drip": counts.get("Drip", 0),
+            "No Status": counts.get("No Status", 0),
+            "total": sum(counts.get(k, 0) for k in tag_map)
+        })
+    # Sort by total desc, then name
+    result.sort(key=lambda x: (-x["total"], x["name"]))
+    conn.close()
+    return result[:limit]
+
 def dashboard():
-    return render_template("placeholder_dashboard.html")
+    dates, sent, delivered, delivery_rate, replies, latest = load_kpi_rows(limit_days=30)
+    lead_breakdown = get_lead_breakdown()
+    top_campaigns = get_top_campaigns()
+    return render_template("kpi_dashboard.html",
+                          dates=dates,
+                          sent=sent,
+                          delivered=delivered,
+                          delivery_rate=delivery_rate,
+                          replies=replies,
+                          latest=latest,
+                          lead_breakdown=lead_breakdown,
+                          top_campaigns=top_campaigns)
 
 @app.route("/reminders/new", methods=["POST"])
 def new_reminder():
@@ -1131,6 +1412,9 @@ def batch_sender():
         def progress_cb(sent, total):
             batch_status["sent"] = sent
             batch_status["total"] = total
+            # Only print every 100 messages or on completion
+            if sent % 100 == 0 or sent == total:
+                print(f"[Batch] Sent {sent}/{total}")
 
         def worker():
             from sms_sender_core import send_sms_batch
