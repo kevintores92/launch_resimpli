@@ -84,6 +84,7 @@ TAG_ICONS = {
 
 ngrok_public_url = ngrok.connect(PORT).public_url
 print(f"[ngrok] Public URL: {ngrok_public_url}")
+print(f"[ngrok] Public URL: {ngrok_public_url}")
 # ── HELPERS ────────────────────────────────────────────────────────
 def normalize_e164(num):
     s = ''.join(filter(str.isdigit, str(num)))
@@ -1003,7 +1004,7 @@ def call_contact():
         # fallback → use last used or default
         from_number = get_caller_id_for_phone(to_number)
 
-    twiml_url = f"{ngrok_public_url}/twiml?lead={to_number}"
+    twiml_url = f"/twiml?lead={to_number}"
     try:
         call = client.calls.create(to=YOUR_PHONE, from_=from_number, url=twiml_url)
         return jsonify(success=True, sid=call.sid, from_number=from_number, lead=to_number)
@@ -1450,7 +1451,7 @@ def launch_dashboard():
     print("[Progress] Deduplicating and importing messages...")
     deduplicate_and_import()
     print("[Progress] Updating Twilio webhooks...")
-    update_webhooks(ngrok_public_url)
+    update_webhooks("/")
     print("[Progress] Launching dashboard in browser...")
     webbrowser.open(f"http://127.0.0.1:{PORT}")
     flask_thread = threading.Thread(target=run_flask)
