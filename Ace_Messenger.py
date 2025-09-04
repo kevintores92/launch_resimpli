@@ -2,7 +2,6 @@ from flask import Flask, request, jsonify, render_template, redirect, url_for, R
 from flask_socketio import SocketIO
 from twilio.rest import Client
 from twilio.twiml.voice_response import VoiceResponse
-from pyngrok import ngrok
 from datetime import datetime, timezone, timedelta
 from dateutil import parser, tz
 from sms_sender_core import send_sms_batch
@@ -82,9 +81,6 @@ TAG_ICONS = {
     "No tag": "🏷️"
 }
 
-ngrok_public_url = ngrok.connect(PORT).public_url
-print(f"[ngrok] Public URL: {ngrok_public_url}")
-print(f"[ngrok] Public URL: {ngrok_public_url}")
 # ── HELPERS ────────────────────────────────────────────────────────
 def normalize_e164(num):
     s = ''.join(filter(str.isdigit, str(num)))
@@ -1451,7 +1447,7 @@ def launch_dashboard():
     print("[Progress] Deduplicating and importing messages...")
     deduplicate_and_import()
     print("[Progress] Updating Twilio webhooks...")
-    update_webhooks("/")
+    update_webhooks("https://resimpli-launch.onrender.com")
     print("[Progress] Launching dashboard in browser...")
     webbrowser.open(f"http://127.0.0.1:{PORT}")
     flask_thread = threading.Thread(target=run_flask)

@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID')
 TWILIO_AUTH_TOKEN = os.environ.get('TWILIO_AUTH_TOKEN')
-SENDER_NUMBERS = ['+16153144957', '+16158824237', '+16154549166', '+16158806389', '+16158824633']
+SENDER_NUMBERS = os.environ.get('SENDER_NUMBERS', '').split(',')
 
 # CSV Paths
 BASE_DIR = os.path.dirname(__file__)
