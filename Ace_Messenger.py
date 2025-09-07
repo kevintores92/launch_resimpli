@@ -51,12 +51,35 @@ TWILIO_NUMBERS = os.environ.get("TWILIO_NUMBERS", "").split(",")
 YOUR_PHONE = os.environ.get("YOUR_PHONE")
 
 
+from flask import session
 app = Flask(__name__)
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "aceholdings_secret")
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 batch_status = {"sent": 0, "total": 0, "running": False}
 BASE_DIR = os.path.dirname(__file__)
 BATCH_CSV = os.path.join(BASE_DIR, 'Batch.csv')
+# ── ROUTES ────────────────────────────────────────────────────────
+
+# --- Login route ---
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = None
+    if request.method == "POST":
+        username = request.form.get("username")
+        password = request.form.get("password")
+        if username == "aceholdings" and password == "kevin123":
+            session["logged_in"] = True
+            return redirect(url_for("dashboard"))
+        else:
+            error = "Invalid username or password."
+    return render_template("login.html", error=error)
+
+# --- Logout route ---
+@app.route("/logout")
+def logout():
+    session.pop("logged_in", None)
+    return redirect(url_for("login"))
 
 # --- Context processor to inject TWILIO_NUMBERS into all templates ---
 @app.context_processor
@@ -494,9 +517,18 @@ from datetime import datetime
 
 app = Flask(__name__)
 
+def login_required(f):
+    from functools import wraps
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get("logged_in"):
+            return redirect(url_for("login"))
+        return f(*args, **kwargs)
+    return decorated_function
+
 @app.route("/")
-@app.route("/", methods=["GET"])
 @app.route("/dashboard", methods=["GET"])
+@login_required
 def dashboard():
     # Get week from query param, default to latest week in DB
     week = request.args.get("week")
@@ -625,6 +657,7 @@ def load_kpi_rows_for_month(month):
     return dates, sent, delivered, delivery_rate, replies, latest
 
 @app.route("/inbox")
+@login_required
 def inbox():
     search = request.args.get("search", "")
     box = request.args.get("box", "inbox")

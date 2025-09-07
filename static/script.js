@@ -1,4 +1,22 @@
 // === Assign tag from thread list ===
+
+// === Append a message to the conversation view ===
+function appendMessage(phone, body, direction, timestamp) {
+  // Only append if the thread is currently open
+  if (!currentPhone || currentPhone !== phone) return;
+  const messagesDiv = document.getElementById("messages");
+  if (!messagesDiv) return;
+  const messageClass = direction === "outbound" ? "message outbound" : "message inbound";
+  const html =
+    '<div class="' + messageClass + '">' +
+      '<div class="message-content">' +
+        '<div class="bubble">' + body + '</div>' +
+        '<div class="message-meta"><div class="timestamp">' + timestamp + '</div></div>' +
+      '</div>' +
+    '</div>';
+  messagesDiv.insertAdjacentHTML('beforeend', html);
+  setTimeout(() => { messagesDiv.scrollTop = messagesDiv.scrollHeight; }, 50);
+}
 function assignTagToThread(phone, tag) {
   fetch('/update-contact', {
     method: 'POST',
