@@ -1,16 +1,3 @@
-# --- Twilio WebRTC TwiML endpoint ---
-@app.route("/twiml", methods=["POST"])
-def twiml():
-    from twilio.twiml.voice_response import VoiceResponse, Dial
-    response = VoiceResponse()
-    to = request.values.get("To")
-    if to:
-        dial = Dial()
-        dial.client(to)
-        response.append(dial)
-    else:
-        response.say("No destination provided.")
-    return str(response)
 from flask import Flask, request, jsonify, render_template, redirect, url_for, Response, g
 from flask_socketio import SocketIO
 from twilio.rest import Client
@@ -25,6 +12,20 @@ app = Flask(__name__)
 
 from twilio.jwt.access_token import AccessToken
 from twilio.jwt.access_token.grants import VoiceGrant
+
+# --- Twilio WebRTC TwiML endpoint ---
+@app.route("/twiml", methods=["POST"])
+def twiml():
+    from twilio.twiml.voice_response import VoiceResponse, Dial
+    response = VoiceResponse()
+    to = request.values.get("To")
+    if to:
+        dial = Dial()
+        dial.client(to)
+        response.append(dial)
+    else:
+        response.say("No destination provided.")
+    return str(response)
 # Add endpoint to generate Twilio Voice access token for WebRTC
 @app.route("/token", methods=["GET"])
 def get_twilio_token():
