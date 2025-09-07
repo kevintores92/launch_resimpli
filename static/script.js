@@ -159,10 +159,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!selectedTags.length) {
           const box = urlParams.get("box") || "inbox";
           if (box === "inbox") {
-            const exclude = ["DNC", "Wrong Number", "Not interested", "__ALL__", "Unverified", "__NO_tag__", "No tag"];
+            // Exclude 'No tag' and other unwanted tags from inbox default
+            const exclude = ["DNC", "Wrong Number", "Not interested", "__ALL__", "Unverified", "__NO_tag__", "No tag", "No Tag", "no tag", "no_tag"];
             selectedTags = Array.from(options)
               .map(function(o) { return o.dataset.value; })
-              .filter(function(v) { return exclude.indexOf(v) === -1; });
+              .filter(function(v) { return !exclude.includes(v); });
           }
         }
 
