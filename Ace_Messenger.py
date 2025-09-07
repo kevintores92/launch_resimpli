@@ -1,3 +1,28 @@
+# --- Twilio WebRTC TwiML endpoint ---
+@app.route("/twiml", methods=["POST"])
+def twiml():
+    from twilio.twiml.voice_response import VoiceResponse, Dial
+    response = VoiceResponse()
+    to = request.values.get("To")
+    if to:
+        dial = Dial()
+        dial.client(to)
+        response.append(dial)
+    else:
+        response.say("No destination provided.")
+    return str(response)
+from flask import Flask, request, jsonify, render_template, redirect, url_for, Response, g
+from flask_socketio import SocketIO
+from twilio.rest import Client
+from twilio.twiml.voice_response import VoiceResponse
+from datetime import datetime, timezone, timedelta
+from dateutil import parser, tz
+from sms_sender_core import send_sms_batch
+import threading
+import os, sqlite3, threading, webbrowser, time, csv
+
+app = Flask(__name__)
+
 from twilio.jwt.access_token import AccessToken
 from twilio.jwt.access_token.grants import VoiceGrant
 # Add endpoint to generate Twilio Voice access token for WebRTC
@@ -1052,28 +1077,8 @@ def send_sms():
 
 @app.route("/call", methods=["POST"])
 def call_contact():
-    data = request.get_json(force=True)
-    phone = data.get("phone")
-    custom_from = data.get("from")  # Caller ID selected in the dialer (optional)
-
-    if not phone:
-        return jsonify(success=False, error="No phone provided"), 400
-
-    to_number = normalize_e164(phone)
-
-    # If user picked one from dropdown, use it
-    if custom_from and custom_from in TWILIO_NUMBERS:
-        from_number = custom_from
-    else:
-        # fallback → use last used or default
-        from_number = get_caller_id_for_phone(to_number)
-
-    twiml_url = f"/twiml?lead={to_number}"
-    try:
-        call = client.calls.create(to=YOUR_PHONE, from_=from_number, url=twiml_url)
-        return jsonify(success=True, sid=call.sid, from_number=from_number, lead=to_number)
-    except Exception as e:
-        return jsonify(success=False, error=str(e))
+    # This endpoint is deprecated. All calling should use Twilio Client JS (WebRTC) in the browser.
+    return jsonify(success=False, error="Call bridging is disabled. Use browser calling via Twilio Client JS/WebRTC."), 400
 
 @app.route("/create_thread", methods=["POST"])
 def create_thread():
