@@ -8,7 +8,6 @@
   </div>
 </header>
 
-
 <main class="dashboard-grid-main">
   <section class="dashboard-grid-cards">
     <div class="card small">
@@ -31,6 +30,10 @@
       <div class="card-title">Response Rate %</div>
       <div class="card-value" id="responseRate">{{ latest.response_rate }}%</div>
     </div>
+    <div class="kpi-card">
+      <table>
+        <thead>
+          <tr>
             <th style="text-align:center;">DNC</th>
             <th style="text-align:center;">Total</th>
           </tr>
@@ -50,7 +53,6 @@
         {% endfor %}
         </tbody>
       </table>
-      </div>
     </div>
     <div class="kpi-card">
       <h3 style="margin-bottom: 8px;">Replies Breakdown by Tag</h3>
@@ -64,16 +66,6 @@
           <div style="margin-bottom: 8px;"><span style="display:inline-block;width:14px;height:14px;background:#bdbdbd;border-radius:3px;margin-right:8px;"></span>DNC: {{ lead_breakdown['DNC'] }}</div>
           <div style="margin-top:12px;font-weight:bold;">Total Tagged Replies: {{ lead_breakdown['total'] }}</div>
         </div>
-      </div>
-    </div>
-  </section>
-            <td style="text-align:center;font-weight:500;">{{ camp.Warm }}</td>
-            <td style="text-align:center;font-weight:500;">{{ camp.Nurture }}</td>
-            <td style="text-align:center;font-weight:500;">{{ camp.Drip }}</td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
       </div>
     </div>
     <div class="kpi-card">
@@ -106,7 +98,6 @@
       <h3>Sent / Replies (last 30 days)</h3>
       <canvas id="lineChart" width="340" height="180"></canvas>
     </div>
-  </section>
   </section>
 </main>
 
