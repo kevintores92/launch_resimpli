@@ -252,16 +252,27 @@ function addToLeadsPhone(phone) {
 }
 
 function callContact(phone) {
-  fetch("/call", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ phone: phone })
-  })
-  .then(res => res.json())
-  .then(data => {
-    if (data.success) alert("📞 Calling " + (data.lead || phone) + "\nCaller ID: " + (data.from_number || ''));
-    else alert("❌ Call failed: " + data.error);
-  });
+  // WebRTC browser calling using Twilio Client JS
+  fetch('/token?identity=user')
+    .then(res => res.json())
+    .then(data => {
+      if (!data.token) return alert('❌ Could not get Twilio token');
+      if (!window.Twilio || !window.Twilio.Device) {
+        alert('Twilio Client JS not loaded.');
+        return;
+      }
+      if (!window.twilioDevice) {
+        window.twilioDevice = new Twilio.Device(data.token, { debug: true });
+      }
+      window.twilioDevice.on('ready', function() {
+        const params = { To: phone };
+        window.twilioDevice.connect(params);
+        alert('📞 Calling ' + phone + ' via browser...');
+      });
+      window.twilioDevice.on('error', function(err) {
+        alert('❌ Twilio Device error: ' + err.message);
+      });
+    });
 }
 
 function addToLeads() {
