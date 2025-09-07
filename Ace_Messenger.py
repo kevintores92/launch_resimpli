@@ -13,6 +13,17 @@ from twilio.twiml.voice_response import VoiceResponse
 from twilio.jwt.access_token import AccessToken
 from twilio.jwt.access_token.grants import VoiceGrant
 from sms_sender_core import send_sms_batch
+from flask import Flask, request, jsonify, render_template, redirect, url_for, Response, g
+from flask_socketio import SocketIO
+from twilio.rest import Client
+from twilio.twiml.voice_response import VoiceResponse
+from datetime import datetime, timezone, timedelta
+from dateutil import parser, tz
+from sms_sender_core import send_sms_batch
+import threading
+import os, sqlite3, threading, webbrowser, time, csv
+import sqlite3
+# ── CONFIG ─────────────────────────────────────────────────────────
 
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 app = Flask(__name__)
@@ -32,40 +43,6 @@ LEADS_CSV_PATH = os.path.join(BASE_DIR, "Leads.csv")
 BATCH_CSV = os.path.join(BASE_DIR, 'Batch.csv')
 PORT = 5000
 KPIS_DB_PATH = r"C:\Users\admin\Desktop\Ace Holdings\sms_kpis.db"
-
-# --- Route definitions should be at the bottom of the file ---
-# ...existing code...
-from flask import Flask, request, jsonify, render_template, redirect, url_for, Response, g
-from flask_socketio import SocketIO
-from twilio.rest import Client
-from twilio.twiml.voice_response import VoiceResponse
-from datetime import datetime, timezone, timedelta
-from dateutil import parser, tz
-from sms_sender_core import send_sms_batch
-import threading
-import os, sqlite3, threading, webbrowser, time, csv
-
-
-import sqlite3
-# ── CONFIG ─────────────────────────────────────────────────────────
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
-STATIC_DIR = os.path.join(BASE_DIR, "static")
-DB_PATH = os.path.join(BASE_DIR, "messages.db")
-LEADS_CSV_PATH = os.path.join(BASE_DIR, "Leads.csv")
-
-PORT = 5000
-# KPI Dashboard config
-KPIS_DB_PATH = r"C:\Users\admin\Desktop\Ace Holdings\sms_kpis.db"
-
-
-import os
-from dotenv import load_dotenv
-load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
-TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
-TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
-TWILIO_NUMBERS = os.environ.get("TWILIO_NUMBERS", "").split(",")
-YOUR_PHONE = os.environ.get("YOUR_PHONE")
 
 
 from flask import session
@@ -76,60 +53,7 @@ client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 batch_status = {"sent": 0, "total": 0, "running": False}
 BASE_DIR = os.path.dirname(__file__)
 BATCH_CSV = os.path.join(BASE_DIR, 'Batch.csv')
-# ── ROUTES ────────────────────────────────────────────────────────
 
-# --- Login route ---
-@app.route("/login", methods=["GET", "POST"])
-def login():
-    error = None
-    if request.method == "POST":
-        username = request.form.get("username")
-        password = request.form.get("password")
-        if username == "aceholdings" and password == "kevin123":
-            session["logged_in"] = True
-            return redirect(url_for("dashboard"))
-        else:
-            error = "Invalid username or password."
-    return render_template("login.html", error=error)
-
-# --- Logout route ---
-@app.route("/logout")
-def logout():
-    session.pop("logged_in", None)
-    return redirect(url_for("login"))
-
-# --- Context processor to inject TWILIO_NUMBERS into all templates ---
-@app.context_processor
-def inject_twilio_numbers():
-    return {"TWILIO_NUMBERS": TWILIO_NUMBERS}
-from functools import wraps
-
-# --- Login required decorator ---
-def login_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not session.get("logged_in"):
-            return redirect(url_for("login"))
-        return f(*args, **kwargs)
-    return decorated_function
-
-# --- MIGRATION: Ensure contact_drip_assignments table exists ---
-def ensure_drip_assignment_table():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS contact_drip_assignments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            contact_phone TEXT,
-            drip_id INTEGER,
-            assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            completed INTEGER DEFAULT 0
-        )
-    ''')
-    conn.commit()
-    conn.close()
-
-ensure_drip_assignment_table()
 
 
 import threading
@@ -190,6 +114,25 @@ def normalize_timestamp(ts_str):
             INSERT INTO messages (phone, body, timestamp, ...)
             VALUES (?, ?, ?, ...)
         """, (message["phone"], message["body"], message["timestamp"], ...))
+
+# --- MIGRATION: Ensure contact_drip_assignments table exists ---
+def ensure_drip_assignment_table():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS contact_drip_assignments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            contact_phone TEXT,
+            drip_id INTEGER,
+            assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            completed INTEGER DEFAULT 0
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+ensure_drip_assignment_table()
+
 
 def get_caller_id_for_phone(phone):
     phone = normalize_e164(phone)
@@ -728,6 +671,42 @@ def inbox():
         reminders_count=reminders_count,
         no_tags_count=no_tags_count
     )
+# ── ROUTES ────────────────────────────────────────────────────────
+
+# --- Login route ---
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = None
+    if request.method == "POST":
+        username = request.form.get("username")
+        password = request.form.get("password")
+        if username == "aceholdings" and password == "kevin123":
+            session["logged_in"] = True
+            return redirect(url_for("dashboard"))
+        else:
+            error = "Invalid username or password."
+    return render_template("login.html", error=error)
+
+# --- Logout route ---
+@app.route("/logout")
+def logout():
+    session.pop("logged_in", None)
+    return redirect(url_for("login"))
+
+# --- Context processor to inject TWILIO_NUMBERS into all templates ---
+@app.context_processor
+def inject_twilio_numbers():
+    return {"TWILIO_NUMBERS": TWILIO_NUMBERS}
+from functools import wraps
+
+# --- Login required decorator ---
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get("logged_in"):
+            return redirect(url_for("login"))
+        return f(*args, **kwargs)
+    return decorated_function
 
 
 # --- Update contact endpoint ---
