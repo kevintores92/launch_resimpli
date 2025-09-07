@@ -10,43 +10,29 @@
 
 
 <main class="dashboard-grid-main">
-  <div class="dashboard-week-nav">
-    <form method="get" id="weekNavForm" style="display:inline-block;">
-      <label for="weekSelect" style="font-weight:500;margin-right:8px;">Week:</label>
-      <select name="week" id="weekSelect" onchange="document.getElementById('weekNavForm').submit()" style="padding:6px 12px;font-size:1em;border-radius:6px;">
-        {% for w in weeks %}
-          <option value="{{ w }}" {% if w == selected_week %}selected{% endif %}>{{ w }}</option>
-        {% endfor %}
-      </select>
-    </form>
-  </div>
   <section class="dashboard-grid-cards">
     <div class="card small">
-      <div class="card-title">Total Sent (last day)</div>
+      <div class="card-title">Total Sent (week)</div>
       <div class="card-value" id="totalSent">{{ latest.total_sent }}</div>
     </div>
     <div class="card small">
-      <div class="card-title">Delivered</div>
+      <div class="card-title">Delivered (week)</div>
       <div class="card-value" id="totalDelivered">{{ latest.total_delivered }}</div>
     </div>
     <div class="card small">
-      <div class="card-title">Replies</div>
+      <div class="card-title">Replies (week)</div>
       <div class="card-value" id="totalReplies">{{ latest.total_replies }}</div>
     </div>
-  </section>
-
-  <section class="dashboard-grid-kpis">
-    <div class="kpi-card">
-      <h3 style="margin-bottom: 8px; display: flex; align-items: center;">Top 3 Campaigns <span style="font-size:14px;color:#bdbdbd;margin-left:6px;cursor:help;" title="Based on contact tags">&#9432;</span></h3>
-      <div style="overflow-x:auto;">
-      <table style="width:100%;background:transparent;border-collapse:separate;border-spacing:0 2px;">
-        <thead>
-          <tr style="font-size:15px;color:#888;font-weight:500;">
-            <th style="text-align:left;padding:6px 0 6px 8px;">&nbsp;</th>
-            <th style="text-align:center;"><span style="color:#d77b7b;font-size:18px;vertical-align:middle;">&#128293;</span></th>
-            <th style="text-align:center;"><span style="color:#ffe082;font-size:18px;vertical-align:middle;">&#128165;</span></th>
-            <th style="text-align:center;"><span style="color:#8bc34a;font-size:18px;vertical-align:middle;">&#127793;</span></th>
-            <th style="text-align:center;"><span style="color:#5c6bc0;font-size:18px;vertical-align:middle;">&#128167;</span></th>
+    <div class="card small">
+      <div class="card-title">Delivery Rate %</div>
+      <div class="card-value" id="deliveryRate">{{ latest.avg_delivery_rate }}%</div>
+    </div>
+    <div class="card small">
+      <div class="card-title">Response Rate %</div>
+      <div class="card-value" id="responseRate">{{ latest.response_rate }}%</div>
+    </div>
+            <th style="text-align:center;">DNC</th>
+            <th style="text-align:center;">Total</th>
           </tr>
         </thead>
         <tbody>
@@ -54,6 +40,33 @@
           <tr style="background:{{ loop.index0 % 2 == 1 and '#f7f8fa' or 'transparent' }};font-size:16px;">
             <td style="padding:8px 0 8px 8px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ camp.name }}</td>
             <td style="text-align:center;font-weight:500;">{{ camp.Hot }}</td>
+            <td style="text-align:center;font-weight:500;">{{ camp.Nurture }}</td>
+            <td style="text-align:center;font-weight:500;">{{ camp.Drip }}</td>
+            <td style="text-align:center;font-weight:500;">{{ camp['Not interested'] }}</td>
+            <td style="text-align:center;font-weight:500;">{{ camp['Wrong Number'] }}</td>
+            <td style="text-align:center;font-weight:500;">{{ camp.DNC }}</td>
+            <td style="text-align:center;font-weight:500;">{{ camp.total }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <h3 style="margin-bottom: 8px;">Replies Breakdown by Tag</h3>
+      <div style="display: flex; align-items: center;justify-content:center;">
+        <div style="margin-left: 24px;">
+          <div style="margin-bottom: 8px;"><span style="display:inline-block;width:14px;height:14px;background:#d77b7b;border-radius:3px;margin-right:8px;"></span>Hot: {{ lead_breakdown['Hot'] }}</div>
+          <div style="margin-bottom: 8px;"><span style="display:inline-block;width:14px;height:14px;background:#8bc34a;border-radius:3px;margin-right:8px;"></span>Nurture: {{ lead_breakdown['Nurture'] }}</div>
+          <div style="margin-bottom: 8px;"><span style="display:inline-block;width:14px;height:14px;background:#5c6bc0;border-radius:3px;margin-right:8px;"></span>Drip: {{ lead_breakdown['Drip'] }}</div>
+          <div style="margin-bottom: 8px;"><span style="display:inline-block;width:14px;height:14px;background:#e0e0e0;border-radius:3px;margin-right:8px;"></span>Not interested: {{ lead_breakdown['Not interested'] }}</div>
+          <div style="margin-bottom: 8px;"><span style="display:inline-block;width:14px;height:14px;background:#bdbdbd;border-radius:3px;margin-right:8px;"></span>Wrong Number: {{ lead_breakdown['Wrong Number'] }}</div>
+          <div style="margin-bottom: 8px;"><span style="display:inline-block;width:14px;height:14px;background:#bdbdbd;border-radius:3px;margin-right:8px;"></span>DNC: {{ lead_breakdown['DNC'] }}</div>
+          <div style="margin-top:12px;font-weight:bold;">Total Tagged Replies: {{ lead_breakdown['total'] }}</div>
+        </div>
+      </div>
+    </div>
+  </section>
             <td style="text-align:center;font-weight:500;">{{ camp.Warm }}</td>
             <td style="text-align:center;font-weight:500;">{{ camp.Nurture }}</td>
             <td style="text-align:center;font-weight:500;">{{ camp.Drip }}</td>
