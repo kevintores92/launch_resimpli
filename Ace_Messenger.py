@@ -544,10 +544,20 @@ def load_kpi_rows_for_week(week_label):
         c.execute("SELECT COUNT(*) FROM messages WHERE direction='inbound' AND date(timestamp)=?", (d,))
         replies.append(c.fetchone()[0])
     delivery_rate = [round((d/s)*100,2) if s else 0 for s,d in zip(sent, delivered)]
-    latest = {"total_sent": sent[-1] if sent else 0,
-              "total_delivered": delivered[-1] if delivered else 0,
-              "total_replies": replies[-1] if replies else 0,
-              "avg_reply_time": "N/A"}
+    # Weekly totals
+    total_sent = sum(sent)
+    total_delivered = sum(delivered)
+    total_replies = sum(replies)
+    avg_delivery_rate = round((total_delivered/total_sent)*100,2) if total_sent else 0
+    response_rate = round((total_replies/total_sent)*100,2) if total_sent else 0
+    latest = {
+        "total_sent": total_sent,
+        "total_delivered": total_delivered,
+        "total_replies": total_replies,
+        "avg_delivery_rate": avg_delivery_rate,
+        "response_rate": response_rate,
+        "avg_reply_time": "N/A"
+    }
     conn.close()
     return dates, sent, delivered, delivery_rate, replies, latest
 
@@ -734,22 +744,24 @@ def get_lead_breakdown():
     Returns a dict of tag -> count from contacts table, plus total.
     """
     if not os.path.exists(DB_PATH):
-        return {"Hot": 0, "Warm": 0, "Nurture": 0, "Drip": 0, "No Status": 0, "total": 0}
+        return {"Hot": 0, "Nurture": 0, "Drip": 0, "Not interested": 0, "Wrong Number": 0, "DNC": 0, "total": 0}
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    # Get all tags
-    c.execute("SELECT tag FROM contacts")
-    tags = [row[0] if row[0] else "No Status" for row in c.fetchall()]
-    from collections import Counter
-    counts = Counter(tags)
-    # Map to display names
-    mapping = {"Hot": "Hot Leads", "Warm": "Warm Leads", "Nurture": "Nurture", "Drip": "Drips", "No Status": "No Status"}
-    result = {mapping.get(k, k): v for k, v in counts.items()}
-    # Ensure all keys present
-    for k in mapping.values():
-        if k not in result:
-            result[k] = 0
-    result["total"] = sum(result[k] for k in mapping.values())
+    # Count inbound replies by tag
+    c.execute("""
+        SELECT contacts.tag, COUNT(messages.id)
+        FROM messages
+        JOIN contacts ON messages.phone = contacts.phone
+        WHERE messages.direction = 'inbound'
+        GROUP BY contacts.tag
+    """)
+    rows = c.fetchall()
+    tags = ["Hot", "Nurture", "Drip", "Not interested", "Wrong Number", "DNC"]
+    result = {tag: 0 for tag in tags}
+    for tag, count in rows:
+        if tag in result:
+            result[tag] = count
+    result["total"] = sum(result.values())
     conn.close()
     return result
 
@@ -811,37 +823,40 @@ def get_top_campaigns(limit=3):
         return []
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    # Assume campaign name is in 'campaign' column. If not, fallback to 'Campaign' or similar.
-    # Get all campaigns and tags
+    # Get replies by campaign and tag
     try:
-        c.execute("SELECT campaign, tag FROM contacts")
+        c.execute("""
+            SELECT contacts.campaign, contacts.tag, COUNT(messages.id)
+            FROM messages
+            JOIN contacts ON messages.phone = contacts.phone
+            WHERE messages.direction = 'inbound'
+            GROUP BY contacts.campaign, contacts.tag
+        """)
     except Exception:
         try:
-            c.execute("SELECT Campaign, tag FROM contacts")
+            c.execute("""
+                SELECT contacts.Campaign, contacts.tag, COUNT(messages.id)
+                FROM messages
+                JOIN contacts ON messages.phone = contacts.phone
+                WHERE messages.direction = 'inbound'
+                GROUP BY contacts.Campaign, contacts.tag
+            """)
         except Exception:
             return []
     rows = c.fetchall()
-    from collections import defaultdict, Counter
-    camp_tags = defaultdict(list)
-    for camp, tag in rows:
+    from collections import defaultdict
+    tags = ["Hot", "Nurture", "Drip", "Not interested", "Wrong Number", "DNC"]
+    camp_data = defaultdict(lambda: {tag: 0 for tag in tags})
+    for camp, tag, count in rows:
         camp = camp or "(No Campaign)"
-        tag = tag or "No Status"
-        camp_tags[camp].append(tag)
-    # Count tags per campaign
-    tag_map = {"Hot": "Hot", "Warm": "Warm", "Nurture": "Nurture", "Drip": "Drip", "No Status": "No Status"}
+        if tag in camp_data[camp]:
+            camp_data[camp][tag] += count
     result = []
-    for camp, tags in camp_tags.items():
-        counts = Counter(tags)
-        result.append({
-            "name": camp,
-            "Hot": counts.get("Hot", 0),
-            "Warm": counts.get("Warm", 0),
-            "Nurture": counts.get("Nurture", 0),
-            "Drip": counts.get("Drip", 0),
-            "No Status": counts.get("No Status", 0),
-            "total": sum(counts.get(k, 0) for k in tag_map)
-        })
-    # Sort by total desc, then name
+    for camp, tag_counts in camp_data.items():
+        entry = {"name": camp}
+        entry.update(tag_counts)
+        entry["total"] = sum(tag_counts.values())
+        result.append(entry)
     result.sort(key=lambda x: (-x["total"], x["name"]))
     conn.close()
     return result[:limit]
