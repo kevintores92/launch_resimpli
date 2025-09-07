@@ -1,49 +1,40 @@
-from flask import Flask, request, jsonify, render_template, redirect, url_for, Response, g
+import os
+import csv
+import threading
+import time
+import sqlite3
+from datetime import datetime, timezone, timedelta
+from dateutil import parser, tz
+from dotenv import load_dotenv
+from flask import Flask, request, jsonify, render_template, redirect, url_for, Response, g, session
 from flask_socketio import SocketIO
 from twilio.rest import Client
 from twilio.twiml.voice_response import VoiceResponse
-from datetime import datetime, timezone, timedelta
-from dateutil import parser, tz
-from sms_sender_core import send_sms_batch
-import threading
-import os, sqlite3, threading, webbrowser, time, csv
-
-app = Flask(__name__)
-
 from twilio.jwt.access_token import AccessToken
 from twilio.jwt.access_token.grants import VoiceGrant
+from sms_sender_core import send_sms_batch
 
-# --- Twilio WebRTC TwiML endpoint ---
-@app.route("/twiml", methods=["POST"])
-def twiml():
-    from twilio.twiml.voice_response import VoiceResponse, Dial
-    response = VoiceResponse()
-    to = request.values.get("To")
-    if to:
-        dial = Dial()
-        dial.client(to)
-        response.append(dial)
-    else:
-        response.say("No destination provided.")
-    return str(response)
-# Add endpoint to generate Twilio Voice access token for WebRTC
-@app.route("/token", methods=["GET"])
-def get_twilio_token():
-    # These should be set in your .env
-    account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
-    api_key = os.environ.get("TWILIO_API_KEY_SID")
-    api_secret = os.environ.get("TWILIO_API_KEY_SECRET")
-    twiml_app_sid = os.environ.get("TWILIO_TWIML_APP_SID")
-    identity = request.args.get("identity", "user")
-    if not all([account_sid, api_key, api_secret, twiml_app_sid]):
-        return jsonify(success=False, error="Missing Twilio Voice env vars"), 500
-    token = AccessToken(account_sid, api_key, api_secret, identity=identity)
-    voice_grant = VoiceGrant(
-        outgoing_application_sid=twiml_app_sid,
-        incoming_allow=True
-    )
-    token.add_grant(voice_grant)
-    return jsonify(token=token.to_jwt().decode())
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
+app = Flask(__name__)
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "aceholdings_secret")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
+TWILIO_NUMBERS = os.environ.get("TWILIO_NUMBERS", "").split(",")
+YOUR_PHONE = os.environ.get("YOUR_PHONE")
+client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+batch_status = {"sent": 0, "total": 0, "running": False}
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+DB_PATH = os.path.join(BASE_DIR, "messages.db")
+LEADS_CSV_PATH = os.path.join(BASE_DIR, "Leads.csv")
+BATCH_CSV = os.path.join(BASE_DIR, 'Batch.csv')
+PORT = 5000
+KPIS_DB_PATH = r"C:\Users\admin\Desktop\Ace Holdings\sms_kpis.db"
+
+# --- Route definitions should be at the bottom of the file ---
+# ...existing code...
 from flask import Flask, request, jsonify, render_template, redirect, url_for, Response, g
 from flask_socketio import SocketIO
 from twilio.rest import Client
@@ -111,6 +102,16 @@ def logout():
 @app.context_processor
 def inject_twilio_numbers():
     return {"TWILIO_NUMBERS": TWILIO_NUMBERS}
+from functools import wraps
+
+# --- Login required decorator ---
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get("logged_in"):
+            return redirect(url_for("login"))
+        return f(*args, **kwargs)
+    return decorated_function
 
 # --- MIGRATION: Ensure contact_drip_assignments table exists ---
 def ensure_drip_assignment_table():
@@ -534,23 +535,7 @@ def process_message(phone, direction, body, timestamp):
         conn.close()
 
 
-# ── ROUTES ────────────────────────────────────────────────────────
 
-
-# 📩 Inbox (main page)
-from flask import Flask, request, render_template
-from datetime import datetime
-
-app = Flask(__name__)
-
-def login_required(f):
-    from functools import wraps
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not session.get("logged_in"):
-            return redirect(url_for("login"))
-        return f(*args, **kwargs)
-    return decorated_function
 
 @app.route("/")
 @app.route("/dashboard", methods=["GET"])
@@ -892,11 +877,9 @@ def load_kpi_rows(limit_days=60):
     conn.close()
     return dates, sent, delivered, delivery_rate, replies, latest
 
-@app.route("/")
-@app.route("/dashboard")
 def get_top_campaigns(limit=3):
     """
-    Returns a list of dicts: [{name, Hot, Warm, Nurture, Drip}], sorted by total leads desc.
+    Returns a list of dicts: [{name, Hot, Nurture, Drip, Not interested, Wrong Number, DNC, total}], sorted by total leads desc.
     """
     if not os.path.exists(DB_PATH):
         return []
@@ -939,20 +922,6 @@ def get_top_campaigns(limit=3):
     result.sort(key=lambda x: (-x["total"], x["name"]))
     conn.close()
     return result[:limit]
-
-def dashboard():
-    dates, sent, delivered, delivery_rate, replies, latest = load_kpi_rows(limit_days=30)
-    lead_breakdown = get_lead_breakdown()
-    top_campaigns = get_top_campaigns()
-    return render_template("kpi_dashboard.html",
-                          dates=dates,
-                          sent=sent,
-                          delivered=delivered,
-                          delivery_rate=delivery_rate,
-                          replies=replies,
-                          latest=latest,
-                          lead_breakdown=lead_breakdown,
-                          top_campaigns=top_campaigns)
 
 @app.route("/reminders/new", methods=["POST"])
 def new_reminder():
