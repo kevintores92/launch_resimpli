@@ -1,4 +1,22 @@
 // === Assign tag from thread list ===
+
+// === Append a message to the conversation view ===
+function appendMessage(phone, body, direction, timestamp) {
+  // Only append if the thread is currently open
+  if (!currentPhone || currentPhone !== phone) return;
+  const messagesDiv = document.getElementById("messages");
+  if (!messagesDiv) return;
+  const messageClass = direction === "outbound" ? "message outbound" : "message inbound";
+  const html =
+    '<div class="' + messageClass + '">' +
+      '<div class="message-content">' +
+        '<div class="bubble">' + body + '</div>' +
+        '<div class="message-meta"><div class="timestamp">' + timestamp + '</div></div>' +
+      '</div>' +
+    '</div>';
+  messagesDiv.insertAdjacentHTML('beforeend', html);
+  setTimeout(() => { messagesDiv.scrollTop = messagesDiv.scrollHeight; }, 50);
+}
 function assignTagToThread(phone, tag) {
   fetch('/update-contact', {
     method: 'POST',
@@ -141,10 +159,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!selectedTags.length) {
           const box = urlParams.get("box") || "inbox";
           if (box === "inbox") {
-            const exclude = ["DNC", "Wrong Number", "Not interested", "__ALL__", "Unverified"];
+            // Exclude 'No tag' and other unwanted tags from inbox default
+            const exclude = ["DNC", "Wrong Number", "Not interested", "__ALL__", "Unverified", "__NO_tag__", "No tag", "No Tag", "no tag", "no_tag"];
             selectedTags = Array.from(options)
               .map(function(o) { return o.dataset.value; })
-              .filter(function(v) { return exclude.indexOf(v) === -1; });
+              .filter(function(v) { return !exclude.includes(v); });
           }
         }
 
@@ -252,16 +271,27 @@ function addToLeadsPhone(phone) {
 }
 
 function callContact(phone) {
-  fetch("/call", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ phone: phone })
-  })
-  .then(res => res.json())
-  .then(data => {
-    if (data.success) alert("📞 Calling " + (data.lead || phone) + "\nCaller ID: " + (data.from_number || ''));
-    else alert("❌ Call failed: " + data.error);
-  });
+  // WebRTC browser calling using Twilio Client JS
+  fetch('/token?identity=user')
+    .then(res => res.json())
+    .then(data => {
+      if (!data.token) return alert('❌ Could not get Twilio token');
+      if (!window.Twilio || !window.Twilio.Device) {
+        alert('Twilio Client JS not loaded.');
+        return;
+      }
+      if (!window.twilioDevice) {
+        window.twilioDevice = new Twilio.Device(data.token, { debug: true });
+      }
+      window.twilioDevice.on('ready', function() {
+        const params = { To: phone };
+        window.twilioDevice.connect(params);
+        alert('📞 Calling ' + phone + ' via browser...');
+      });
+      window.twilioDevice.on('error', function(err) {
+        alert('❌ Twilio Device error: ' + err.message);
+      });
+    });
 }
 
 function addToLeads() {

@@ -1,3 +1,18 @@
+import os
+import csv
+import threading
+import time
+import sqlite3
+from datetime import datetime, timezone, timedelta
+from dateutil import parser, tz
+from dotenv import load_dotenv
+from flask import Flask, request, jsonify, render_template, redirect, url_for, Response, g, session
+from flask_socketio import SocketIO
+from twilio.rest import Client
+from twilio.twiml.voice_response import VoiceResponse
+from twilio.jwt.access_token import AccessToken
+from twilio.jwt.access_token.grants import VoiceGrant
+from sms_sender_core import send_sms_batch
 from flask import Flask, request, jsonify, render_template, redirect, url_for, Response, g
 from flask_socketio import SocketIO
 from twilio.rest import Client
@@ -7,59 +22,38 @@ from dateutil import parser, tz
 from sms_sender_core import send_sms_batch
 import threading
 import os, sqlite3, threading, webbrowser, time, csv
-
-
 import sqlite3
 # ── CONFIG ─────────────────────────────────────────────────────────
+
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
+app = Flask(__name__)
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "aceholdings_secret")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
+TWILIO_NUMBERS = os.environ.get("TWILIO_NUMBERS", "").split(",")
+YOUR_PHONE = os.environ.get("YOUR_PHONE")
+client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+batch_status = {"sent": 0, "total": 0, "running": False}
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 DB_PATH = os.path.join(BASE_DIR, "messages.db")
 LEADS_CSV_PATH = os.path.join(BASE_DIR, "Leads.csv")
-
+BATCH_CSV = os.path.join(BASE_DIR, 'Batch.csv')
 PORT = 5000
-# KPI Dashboard config
 KPIS_DB_PATH = r"C:\Users\admin\Desktop\Ace Holdings\sms_kpis.db"
 
 
-import os
-from dotenv import load_dotenv
-load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
-TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
-TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
-TWILIO_NUMBERS = os.environ.get("TWILIO_NUMBERS", "").split(",")
-YOUR_PHONE = os.environ.get("YOUR_PHONE")
-
-
+from flask import session
 app = Flask(__name__)
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "aceholdings_secret")
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 batch_status = {"sent": 0, "total": 0, "running": False}
 BASE_DIR = os.path.dirname(__file__)
 BATCH_CSV = os.path.join(BASE_DIR, 'Batch.csv')
 
-# --- Context processor to inject TWILIO_NUMBERS into all templates ---
-@app.context_processor
-def inject_twilio_numbers():
-    return {"TWILIO_NUMBERS": TWILIO_NUMBERS}
-
-# --- MIGRATION: Ensure contact_drip_assignments table exists ---
-def ensure_drip_assignment_table():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS contact_drip_assignments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            contact_phone TEXT,
-            drip_id INTEGER,
-            assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            completed INTEGER DEFAULT 0
-        )
-    ''')
-    conn.commit()
-    conn.close()
-
-ensure_drip_assignment_table()
 
 
 import threading
@@ -120,6 +114,25 @@ def normalize_timestamp(ts_str):
             INSERT INTO messages (phone, body, timestamp, ...)
             VALUES (?, ?, ?, ...)
         """, (message["phone"], message["body"], message["timestamp"], ...))
+
+# --- MIGRATION: Ensure contact_drip_assignments table exists ---
+def ensure_drip_assignment_table():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS contact_drip_assignments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            contact_phone TEXT,
+            drip_id INTEGER,
+            assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            completed INTEGER DEFAULT 0
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+ensure_drip_assignment_table()
+
 
 def get_caller_id_for_phone(phone):
     phone = normalize_e164(phone)
@@ -465,18 +478,11 @@ def process_message(phone, direction, body, timestamp):
         conn.close()
 
 
-# ── ROUTES ────────────────────────────────────────────────────────
 
-
-# 📩 Inbox (main page)
-from flask import Flask, request, render_template
-from datetime import datetime
-
-app = Flask(__name__)
 
 @app.route("/")
-@app.route("/", methods=["GET"])
 @app.route("/dashboard", methods=["GET"])
+@login_required
 def dashboard():
     # Get week from query param, default to latest week in DB
     week = request.args.get("week")
@@ -605,6 +611,7 @@ def load_kpi_rows_for_month(month):
     return dates, sent, delivered, delivery_rate, replies, latest
 
 @app.route("/inbox")
+@login_required
 def inbox():
     search = request.args.get("search", "")
     box = request.args.get("box", "inbox")
@@ -664,6 +671,42 @@ def inbox():
         reminders_count=reminders_count,
         no_tags_count=no_tags_count
     )
+# ── ROUTES ────────────────────────────────────────────────────────
+
+# --- Login route ---
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = None
+    if request.method == "POST":
+        username = request.form.get("username")
+        password = request.form.get("password")
+        if username == "aceholdings" and password == "kevin123":
+            session["logged_in"] = True
+            return redirect(url_for("dashboard"))
+        else:
+            error = "Invalid username or password."
+    return render_template("login.html", error=error)
+
+# --- Logout route ---
+@app.route("/logout")
+def logout():
+    session.pop("logged_in", None)
+    return redirect(url_for("login"))
+
+# --- Context processor to inject TWILIO_NUMBERS into all templates ---
+@app.context_processor
+def inject_twilio_numbers():
+    return {"TWILIO_NUMBERS": TWILIO_NUMBERS}
+from functools import wraps
+
+# --- Login required decorator ---
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get("logged_in"):
+            return redirect(url_for("login"))
+        return f(*args, **kwargs)
+    return decorated_function
 
 
 # --- Update contact endpoint ---
@@ -813,11 +856,9 @@ def load_kpi_rows(limit_days=60):
     conn.close()
     return dates, sent, delivered, delivery_rate, replies, latest
 
-@app.route("/")
-@app.route("/dashboard")
 def get_top_campaigns(limit=3):
     """
-    Returns a list of dicts: [{name, Hot, Warm, Nurture, Drip}], sorted by total leads desc.
+    Returns a list of dicts: [{name, Hot, Nurture, Drip, Not interested, Wrong Number, DNC, total}], sorted by total leads desc.
     """
     if not os.path.exists(DB_PATH):
         return []
@@ -860,20 +901,6 @@ def get_top_campaigns(limit=3):
     result.sort(key=lambda x: (-x["total"], x["name"]))
     conn.close()
     return result[:limit]
-
-def dashboard():
-    dates, sent, delivered, delivery_rate, replies, latest = load_kpi_rows(limit_days=30)
-    lead_breakdown = get_lead_breakdown()
-    top_campaigns = get_top_campaigns()
-    return render_template("kpi_dashboard.html",
-                          dates=dates,
-                          sent=sent,
-                          delivered=delivered,
-                          delivery_rate=delivery_rate,
-                          replies=replies,
-                          latest=latest,
-                          lead_breakdown=lead_breakdown,
-                          top_campaigns=top_campaigns)
 
 @app.route("/reminders/new", methods=["POST"])
 def new_reminder():
@@ -999,28 +1026,8 @@ def send_sms():
 
 @app.route("/call", methods=["POST"])
 def call_contact():
-    data = request.get_json(force=True)
-    phone = data.get("phone")
-    custom_from = data.get("from")  # Caller ID selected in the dialer (optional)
-
-    if not phone:
-        return jsonify(success=False, error="No phone provided"), 400
-
-    to_number = normalize_e164(phone)
-
-    # If user picked one from dropdown, use it
-    if custom_from and custom_from in TWILIO_NUMBERS:
-        from_number = custom_from
-    else:
-        # fallback → use last used or default
-        from_number = get_caller_id_for_phone(to_number)
-
-    twiml_url = f"/twiml?lead={to_number}"
-    try:
-        call = client.calls.create(to=YOUR_PHONE, from_=from_number, url=twiml_url)
-        return jsonify(success=True, sid=call.sid, from_number=from_number, lead=to_number)
-    except Exception as e:
-        return jsonify(success=False, error=str(e))
+    # This endpoint is deprecated. All calling should use Twilio Client JS (WebRTC) in the browser.
+    return jsonify(success=False, error="Call bridging is disabled. Use browser calling via Twilio Client JS/WebRTC."), 400
 
 @app.route("/create_thread", methods=["POST"])
 def create_thread():
